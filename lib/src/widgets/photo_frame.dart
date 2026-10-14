@@ -33,14 +33,30 @@ class PhotoFrameBackground extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(
-            asset,
+          Image(
+            // Decode at exactly what we will draw — the panel's physical width
+            // — but never wider than the file actually is.
+            //
+            // `metrics.size` is already in logical px; multiplying by
+            // `metrics.u` as well double-counts the design scale and
+            // over-allocates by that factor. And `allowUpscaling: false` stops
+            // it going further: this asset is 1600px wide on a 2000px panel,
+            // so decoding at 2000 would spend ~3 MB of extra bitmap on detail
+            // that does not exist. `ResizeImage` knows the intrinsic size, so
+            // letting it clamp is more robust than hardcoding the dimensions —
+            // swap the photo for a 4K one and it still does the right thing.
+            image: ResizeImage(
+              AssetImage(asset),
+              width: (metrics.size.width * MediaQuery.devicePixelRatioOf(context))
+                  .round()
+                  .clamp(640, 4096),
+              // allowUpscaling defaults to false, which is the behaviour we
+              // want; stated here because relying on a default for a memory
+              // decision is how the 3MB regression above happened.
+              allowUpscaling: false,
+            ),
             fit: BoxFit.cover,
             alignment: Alignment.center,
-            // Decode at roughly what we will actually draw, not the file size.
-            cacheWidth: (metrics.size.width * metrics.u * MediaQuery.devicePixelRatioOf(context))
-                .round()
-                .clamp(640, 2560),
             gaplessPlayback: true,
             filterQuality: FilterQuality.medium,
             // A missing asset must not black out the launcher — fall through to

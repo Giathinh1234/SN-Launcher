@@ -16,6 +16,42 @@ import '../models/nest_action.dart';
 ///
 /// Glyph geometry is modelled on the shapes visible in the device's own
 /// launcher: rounded-square containers, filled brand discs, monoline strokes.
+///
+/// Shared by both painters so the settings gear in the quick-settings row and
+/// the one in the app drawer are the same shape rather than two hand-written
+/// approximations that slowly drift apart.
+///
+/// Four points per tooth, not two, so the tips are *flat*. Two points gives
+/// triangular teeth, which reads as a star or a flower rather than a gear.
+Path _gearPath({
+  int teeth = 8,
+  double outer = 0.46,
+  double inner = 0.33,
+  double tip = 0.42,
+}) {
+  final path = Path();
+  final step = math.pi * 2 / teeth;
+  for (var i = 0; i < teeth; i++) {
+    final a = i * step;
+    final half = step / 2;
+    final halfTip = half * tip;
+    for (final (angle, radius) in [
+      (a - half, inner),
+      (a - halfTip, outer),
+      (a + halfTip, outer),
+      (a + half, inner),
+    ]) {
+      final p = Offset(math.cos(angle) * radius, math.sin(angle) * radius);
+      if (i == 0 && angle == a - half) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+  }
+  return path..close();
+}
+
 class NestGlyphPainter extends CustomPainter {
   NestGlyphPainter({
     required this.kind,
@@ -189,17 +225,23 @@ class NestGlyphPainter extends CustomPainter {
         canvas.drawCircle(const Offset(0.40, 0.33), 0.075, Paint()..color = color);
 
       case NestIconKind.netflix:
-        canvas.drawCircle(Offset.zero, 0.42, stroke..strokeWidth = 0.06);
-        fill(Path()
-          ..moveTo(-0.19, 0.30)
-          ..lineTo(-0.05, 0.30)
-          ..lineTo(-0.05, -0.30)
-          ..lineTo(0.06, -0.30)
-          ..lineTo(0.06, 0.30)
-          ..lineTo(0.19, 0.30)
-          ..lineTo(0.19, -0.30)
-          ..lineTo(-0.19, -0.30)
-          ..close());
+        // The mark is an N. The previous path was two upright bars, which read
+        // as a pause glyph — the diagonal is what makes it an N.
+        canvas.drawCircle(Offset.zero, 0.42, stroke..strokeWidth = 0.055);
+        const double w = 0.085;
+        const double top = -0.24, bottom = 0.24;
+        for (final x in [-0.17, 0.17]) {
+          canvas.drawLine(
+            Offset(x, top),
+            Offset(x, bottom),
+            stroke..strokeWidth = w,
+          );
+        }
+        canvas.drawLine(
+          const Offset(-0.17, -0.24),
+          const Offset(0.17, 0.24),
+          stroke..strokeWidth = w * 0.82,
+        );
 
       case NestIconKind.news:
         fill(Path()
@@ -255,14 +297,11 @@ class NestGlyphPainter extends CustomPainter {
             Paint()..color = _knockout);
 
       case NestIconKind.settings:
-        canvas.drawCircle(Offset.zero, 0.16, stroke);
-        for (var i = 0; i < 8; i++) {
-          canvas.save();
-          canvas.rotate(i * math.pi / 4);
-          canvas.drawLine(const Offset(0, -0.26), const Offset(0, -0.42),
-              stroke..strokeWidth = 0.075);
-          canvas.restore();
-        }
+        // Toothed silhouette, not a sun. A circle plus radiating spokes is
+        // indistinguishable from the brightness tile sitting beside it.
+        fill(_gearPath());
+        // Punch the hub out in the badge colour so it reads as a ring.
+        canvas.drawCircle(Offset.zero, 0.16, Paint()..color = _knockout);
 
       case NestIconKind.stories:
         fill(Path()
@@ -491,25 +530,13 @@ class _QuickSettingPainter extends CustomPainter {
         canvas.drawLine(const Offset(-0.13, 0.05), const Offset(0.13, 0.05), stroke);
         canvas.drawCircle(const Offset(0, -0.09), 0.035, fill);
       case QuickSettingKind.settings:
-        // Eight-tooth gear: a ring with trapezoidal teeth, not a sun. The
-        // quick-settings sun icon right next to it has to stay distinguishable.
-        final gear = Paint()..color = color;
-        canvas.drawCircle(Offset.zero, 0.27, stroke..strokeWidth = 0.07);
-        canvas.drawCircle(Offset.zero, 0.105, gear);
-        for (var i = 0; i < 8; i++) {
-          canvas.save();
-          canvas.rotate(i * math.pi / 4);
-          canvas.drawPath(
-            Path()
-              ..moveTo(-0.07, -0.32)
-              ..lineTo(0.07, -0.32)
-              ..lineTo(0.085, -0.44)
-              ..lineTo(-0.07, -0.46)
-              ..close(),
-            gear,
-          );
-          canvas.restore();
-        }
+        // A gear must not read as a sun — the brightness tile right next to it
+        // is a sun, and two near-identical glyphs side by side is a trap for
+        // anyone reaching for the wrong one. Outlined rather than filled, to
+        // match the rest of the row.
+        canvas.drawPath(_gearPath(outer: 0.47, inner: 0.35),
+            stroke..strokeWidth = 0.055);
+        canvas.drawCircle(Offset.zero, 0.16, stroke..strokeWidth = 0.055);
     }
     canvas.restore();
   }

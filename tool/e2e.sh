@@ -61,6 +61,12 @@ hr "errors"
 ./tool/device.sh logcat
 
 hr "verify"
-for f in dev_home dev_sheet dev_drawer; do
-  [ -f "build/device/$f.png" ] && python3 tool/verify.py "build/device/$f.png"
+# Each step declares what it expects, and a mismatch fails the run rather than
+# printing confident numbers measured against the wrong screen.
+fails=0
+for pair in "dev_home home" "dev_sheet sheet" "dev_drawer drawer"; do
+  set -- $pair
+  [ -f "build/device/$1.png" ] || continue
+  python3 tool/verify.py "build/device/$1.png" "$2" || fails=$((fails + 1))
 done
+[ "$fails" -eq 0 ] || { echo "$fails screenshot(s) did not match the expected state"; exit 1; }

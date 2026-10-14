@@ -31,13 +31,18 @@ case "${1:-}" in
     ;;
 
   sheet)
-    # Swipe up from the very bottom — the edge the drag handle lives on.
-    $ADB shell input swipe $cx $(( H - 10 )) $cx $(( H / 3 )) 300
+    # Swipe up from the bottom band — but not from the last few pixels.
+    # `H-10` sits inside Android's own bottom inset: the system claims the
+    # gesture, the app only ever sees a CANCEL, and the sheet never opens. That
+    # is correct behaviour on the app's part, but it made this rig report a
+    # false failure 4 times out of 4. `H-120` is well inside the app's drag
+    # band (bottom 28% of the screen, so y >= 864) and outside the inset.
+    $ADB shell input swipe $cx $(( H - 120 )) $cx $(( H / 3 )) 300
     ;;
 
   drawer)
     # A shorter, faster flick carries past the detent into the full grid.
-    $ADB shell input swipe $cx $(( H - 6 )) $cx $(( H / 6 )) 120
+    $ADB shell input swipe $cx $(( H - 120 )) $cx $(( H / 6 )) 120
     ;;
 
   next)

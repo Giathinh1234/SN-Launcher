@@ -22,6 +22,24 @@ import random
 from PIL import Image, ImageDraw, ImageFilter
 
 W, H = 1600, 900
+
+ADAPTIVE_XML = """<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>
+"""
+
+BACKGROUND_XML = """<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:startColor="#264682"
+        android:endColor="#563476"
+        android:angle="270" />
+</shape>
+"""
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "photo")
 
 
@@ -132,50 +150,58 @@ def build_landscape():
     return img
 
 
-def build_launcher_icon():
-    """
-    The home-screen icon.
+def _four_dots(draw, cx, cy, r, spread, colours=None):
+    """The Google Assistant four-dot mark, centred on (cx, cy)."""
+    colours = colours or [(66, 133, 244), (234, 67, 53), (251, 188, 4), (52, 168, 83)]
+    for (dx, dy), col in zip([(-1, -1), (1, -1), (-1, 1), (1, 1)], colours):
+        x, y = cx + dx * spread, cy + dy * spread
+        draw.ellipse([x - r, y - r, x + r, y + r], fill=(*col, 255))
 
-    A rounded-square tile carrying the four Assistant dots on the ambient
-    gradient — readable at 48px, which is the size that actually matters on a
-    home screen.
-    """
+
+def build_launcher_icon():
+    """Legacy (pre-Android-8) launcher icon: one composited PNG per density."""
     S = 1024
     tile = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(tile)
-
-    # Android adaptive icons crop to a 66% safe circle; keep art inside it.
-    pad = int(S * 0.17)
-    box = [pad, pad, S - pad, S - pad]
-
     grad = Image.new("RGBA", (S, S))
     gp = grad.load()
     for y in range(S):
-        t = y / S
-        c = lerp((38, 70, 130), (86, 52, 118), t)
+        c = lerp((38, 70, 130), (86, 52, 118), y / S)
         for x in range(S):
             gp[x, y] = (*c, 255)
-
+    pad = int(S * 0.17)
     mask = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(box, radius=int((S - 2 * pad) * 0.235), fill=255)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [pad, pad, S - pad, S - pad], radius=int((S - 2 * pad) * 0.235), fill=255)
     tile.paste(grad, (0, 0), mask)
     tile.putalpha(mask)
-
-    # Assistant four-dot mark.
-    c = S / 2
-    r = S * 0.062
-    spread = S * 0.135
-    cols = [(66, 133, 244), (234, 67, 53), (251, 188, 4), (52, 168, 83)]
-    order = [(-1, -1), (1, -1), (-1, 1), (1, 1)]
-    d = ImageDraw.Draw(tile)
-    for (dx, dy), col in zip(order, cols):
-        cx, cy = c + dx * spread, c + dy * spread
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*col, 255))
-
+    _four_dots(ImageDraw.Draw(tile), S / 2, S / 2, S * 0.062, S * 0.135)
     return tile
 
 
-def write_icons(icon):
+def build_launcher_foreground():
+    """
+    Adaptive-icon foreground.
+
+    The adaptive canvas is 108x108dp but the launcher mask only shows the inner
+    72x72dp (66%). Art must live inside that safe zone or it gets clipped, which
+    is why the dots are pulled in harder here than on the legacy tile.
+    """
+    S = 1024
+    fg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    _four_dots(ImageDraw.Draw(fg), S / 2, S / 2, S * 0.040, S * 0.088)
+    return fg
+
+
+def build_launcher_monochrome():
+    """Single-colour mark for Android's themed-icon mode."""
+    S = 1024
+    fg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    _four_dots(ImageDraw.Draw(fg), S / 2, S / 2, S * 0.040, S * 0.088,
+               colours=[(255, 255, 255)] * 4)
+    return fg
+
+
+def write_icons(icon, foreground, monochrome):
     res = os.path.join(os.path.dirname(__file__), "..", "android", "app", "src", "main", "res")
     densities = {
         "mipmap-mdpi": 48,
@@ -188,7 +214,22 @@ def write_icons(icon):
         path = os.path.join(res, folder)
         os.makedirs(path, exist_ok=True)
         icon.resize((size, size), Image.LANCZOS).save(os.path.join(path, "ic_launcher.png"))
-    print(f"  launcher icon -> {len(densities)} densities")
+        fg_px = int(size * 108 / 48)  # adaptive canvas is 108dp
+        foreground.resize((fg_px, fg_px), Image.LANCZOS).save(
+            os.path.join(path, "ic_launcher_foreground.png"))
+        monochrome.resize((fg_px, fg_px), Image.LANCZOS).save(
+            os.path.join(path, "ic_launcher_monochrome.png"))
+    print(f"  launcher icon -> {len(densities)} densities (legacy + adaptive layers)")
+
+    anydpi = os.path.join(res, "mipmap-anydpi-v26")
+    os.makedirs(anydpi, exist_ok=True)
+    with open(os.path.join(anydpi, "ic_launcher.xml"), "w") as f:
+        f.write(ADAPTIVE_XML)
+    drawable = os.path.join(res, "drawable")
+    os.makedirs(drawable, exist_ok=True)
+    with open(os.path.join(drawable, "ic_launcher_background.xml"), "w") as f:
+        f.write(BACKGROUND_XML)
+    print("  adaptive icon -> mipmap-anydpi-v26 + drawable/ic_launcher_background")
 
 
 if __name__ == "__main__":
@@ -198,4 +239,5 @@ if __name__ == "__main__":
                progressive=True)
     size = os.path.getsize(os.path.join(OUT_DIR, "landscape.jpg"))
     print(f"  landscape -> assets/photo/landscape.jpg ({W}x{H}, {size/1024:.0f} KB)")
-    write_icons(build_launcher_icon())
+    write_icons(build_launcher_icon(), build_launcher_foreground(),
+                build_launcher_monochrome())
