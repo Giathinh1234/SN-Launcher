@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'src/models/nest_action.dart';
+import 'src/models/photo_credit.dart';
+import 'src/services/calendar_service.dart';
 import 'src/services/frame_stats.dart';
 import 'src/screens/nest_shell.dart';
 import 'src/services/clock_service.dart';
@@ -32,6 +36,14 @@ Future<void> main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
+  // Before the first frame, not after it.
+  //
+  // The photographer's credit is a 350-byte JSON file, but the widget that
+  // shows it is `late final` — it reads the credit once and keeps it. Loading
+  // post-frame therefore raced it and the name never appeared. Doing it here
+  // costs well under a millisecond and makes the first frame final.
+  await PhotoCredit.preload();
+
   runApp(const NestLauncherApp());
 
   // Go chrome-less *after* the first frame. Setting the system UI mode before
@@ -50,16 +62,42 @@ class NestLauncherApp extends StatefulWidget {
 }
 
 class _NestLauncherAppState extends State<NestLauncherApp>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late final ClockService _clock = ClockService();
   late final WeatherService _weather = WeatherService();
+  late final CalendarService _calendar = CalendarService();
   final FrameStats _frameStats = FrameStats();
   bool _weatherConfigured = false;
   ShellController? _controller;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Both of these ask for a runtime permission or do disk IO. Deliberately
+    // after the first frame: a launcher that waits on a permission dialog
+    // before painting has already lost the race it exists to win.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_controller?.restore());
+      unawaited(_calendar.start());
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // A wall display is usually never backgrounded, but a permission dialog
+      // does this. Refresh so a calendar granted mid-session appears.
+      unawaited(_calendar.refresh());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
+    _calendar.dispose();
     _clock.dispose();
     _weather.dispose();
     _frameStats.dispose();
@@ -94,6 +132,7 @@ class _NestLauncherAppState extends State<NestLauncherApp>
               controller: _controller!,
               clock: _clock,
               weather: _weather,
+              calendar: _calendar,
             ),
             if (FrameStats.enabled) PerfOverlay(stats: _frameStats),
           ],

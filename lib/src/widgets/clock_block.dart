@@ -34,6 +34,7 @@ class ClockBlock extends StatelessWidget {
     this.animateWeather = true,
     this.forceLightText = false,
     this.albumTitle,
+    this.photoCredit,
   });
 
   final NestMetrics metrics;
@@ -58,6 +59,10 @@ class ClockBlock extends StatelessWidget {
 
   /// Bottom-right album / photo-frame title.
   final String? albumTitle;
+
+  /// Photographer's name, shown after [albumTitle]. Required by the licence of
+  /// the bundled photograph.
+  final String? photoCredit;
 
   @override
   Widget build(BuildContext context) {
@@ -119,10 +124,31 @@ class ClockBlock extends StatelessWidget {
               right: metrics.px(NestMetrics.albumTitleMarginX),
               bottom:
                   metrics.size.height - metrics.px(NestMetrics.albumTitleBaselineY),
-              child: Text(
-                albumTitle!,
-                style: type.albumTitle(color: color),
-                textAlign: TextAlign.right,
+              // Album title on the left, photographer's name on the right.
+              // Both required by the photo's licence, and the device's own
+              // photo frame does exactly this — the credit belongs with the
+              // caption, not buried in a settings screen.
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    albumTitle!,
+                    style: type.albumTitle(color: color),
+                  ),
+                  if (photoCredit != null && photoCredit!.isNotEmpty) ...[
+                    SizedBox(width: metrics.px(12)),
+                    Text(
+                      photoCredit!,
+                      style: type.albumTitle(
+                        color: color.withValues(alpha: 0.68),
+                      ).copyWith(
+                        fontSize: type.albumTitle(color: color).fontSize! * 0.78,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
         ],

@@ -7,6 +7,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
 
 /// Hosts the Nest shell in a permanently-on, chrome-free fullscreen window.
 ///
@@ -15,6 +16,9 @@ import io.flutter.embedding.android.FlutterActivity
 /// and survives the system's immersive-mode swipe with a short grace period
 /// rather than immediately revealing chrome.
 class MainActivity : FlutterActivity() {
+    private lateinit var platformBridge: PlatformBridge
+    private lateinit var settingsBridge: SettingsBridge
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -22,6 +26,26 @@ class MainActivity : FlutterActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         enterImmersiveMode()
+    }
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        platformBridge = PlatformBridge(this).also { it.attach(flutterEngine) }
+        // Separate channel, separate bridge: the platform capability surface and
+        // the persisted-settings surface change for different reasons and have
+        // different lifetimes.
+        settingsBridge = SettingsBridge(applicationContext).also { it.attach(flutterEngine) }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (::platformBridge.isInitialized) {
+            platformBridge.onRequestPermissionsResult(requestCode, grantResults)
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/nest_action.dart';
 import '../services/action_launcher.dart';
+import '../services/platform_bridge.dart';
+import '../services/settings_store.dart';
 import '../theme/ambient_palette.dart';
 import '../theme/nest_metrics.dart';
 
@@ -49,8 +52,15 @@ enum AssistantState { idle, listening, processing, speaking, error }
 /// volume and DND. Everything the gesture recogniser touches lives here so the
 /// widget tree can stay declarative and cheap.
 class ShellController extends ChangeNotifier {
-  ShellController({required this.metrics, required TickerProvider vsync}) {
-    _palette = AmbientPalette.at(DateTime.now().hour.toDouble());
+  ShellController({
+    required this.metrics,
+    required TickerProvider vsync,
+    PlatformBridge platform = const PlatformBridge(),
+    SettingsStore? settings,
+    // ignore: prefer_initializing_formals
+  })  : _platform = platform,
+        _settings = settings ?? SettingsStore() {
+    _palette = AmbientPalette.of(_theme);
 
     _pageAnim = AnimationController(vsync: vsync, duration: kNestSlow);
     _sheetAnim = AnimationController(vsync: vsync, duration: kNestMedium);
@@ -60,8 +70,39 @@ class ShellController extends ChangeNotifier {
 
   final ActionLauncher _launcher = const ActionLauncher();
 
+  /// Exposed so the quick-settings row can fall back to the plugin's URL path
+  /// when the native one is unavailable (desktop, or an older Android build).
+  ActionLauncher get actionLauncher => _launcher;
+  /// Private with a public getter: the constructor takes a named parameter for
+  /// testability but the field name must stay private.
+  final PlatformBridge _platform;
+  final SettingsStore _settings;
+
   /// Set by [attachClock] so the palette can drift with the wall clock.
   ClockTicker? _clockTicker;
+
+  bool _disposed = false;
+
+  /// Restore persisted settings, then match the real device state. Both are
+  /// best-effort and must not delay the first frame — the launcher paints
+  /// immediately and corrects itself a moment later if the platform answers.
+  Future<void> restore() async {
+    await _settings.load();
+    if (_disposed) return;
+    final stored = _settings.get(SettingKeys.theme);
+    if (stored != null) {
+      _theme = NestTheme.values.firstWhere(
+        (t) => t.name == stored,
+        orElse: () => NestTheme.dynamic,
+      );
+    }
+    _recomputePalette(force: true);
+    notifyListeners();
+    unawaited(syncWithDeviceState());
+  }
+
+  SettingsStore get settings => _settings;
+  PlatformBridge get platform => _platform;
 
   late final AnimationController _pageAnim;
   late final AnimationController _sheetAnim;
@@ -94,9 +135,14 @@ class ShellController extends ChangeNotifier {
   double _volume = 0.5;
   double get volume => _volume;
 
-  bool _darkThemeForced = false;
-  bool get darkThemeForced => _darkThemeForced;
-  bool get darkThemeEnabled => _darkThemeForced || _palette.isDark;
+  NestTheme _theme = NestTheme.dynamic;
+  NestTheme get theme => _theme;
+
+  /// True when the current look came from the clock rather than a pinned
+  /// choice — the theme picker labels this row "follows the sun".
+  bool get themeIsDynamic => _theme == NestTheme.dynamic;
+
+  bool get darkThemeEnabled => _palette.isDark;
 
   bool _doNotDisturb = false;
   bool get doNotDisturb => _doNotDisturb;
@@ -140,21 +186,33 @@ class ShellController extends ChangeNotifier {
   }
 
   void _onClockTick() {
+    _recomputePalette();
+  }
+
+  /// Recompute [palette] from the theme choice and the wall clock.
+  ///
+  /// A pinned theme ignores the clock entirely — that is the point of pinning
+  /// it. Only [NestTheme.dynamic] drifts, and it only notifies when the colour
+  /// actually moved, because this runs on every minute tick and a wall display
+  /// must not wake up repainting when nothing changed.
+  void _recomputePalette({bool force = false}) {
     final t = _clockTicker?.now ?? DateTime.now();
-    if (!_darkThemeForced) {
-      final next = AmbientPalette.at(
-        t.hour.toDouble() + t.minute / 60.0,
-        ambientBrightness: _ambientLight,
-      );
-      if (next.top != _palette.top || next.bottom != _palette.bottom) {
-        _palette = next;
-        notifyListeners();
-      }
+    final next = AmbientPalette.resolve(
+      _theme,
+      t.hour.toDouble() + t.minute / 60.0,
+    );
+    if (force ||
+        next.top != _palette.top ||
+        next.bottom != _palette.bottom ||
+        next.surface != _palette.surface) {
+      _palette = next;
+      notifyListeners();
     }
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _pageAnim.dispose();
     _sheetAnim.dispose();
     _assistantTimer?.cancel();
@@ -263,28 +321,71 @@ class ShellController extends ChangeNotifier {
   }
 
   // ── Quick settings ───────────────────────────────────────────────────────
+  //
+  // These drive the *hardware*, not just a number in this class. That is the
+  // whole difference from the version that only mutated private fields and
+  // told the user it had dimmed the screen: nothing on the panel changed.
+  //
+  // Each setter therefore (a) updates local state immediately so the UI is
+  // responsive, and (b) pushes to the platform. The platform call is fire and
+  // forget — a drag must never await a channel round trip, or the brightness
+  // arc stutters. The resulting value is reconciled back when the platform
+  // answers, because Android clamps to its own range.
+
   void setBrightness(double v, {bool notify = true}) {
-    _brightness = v.clamp(0.0, 1.0);
+    final next = v.clamp(0.0, 1.0);
+    if ((next - _brightness).abs() < 0.001) return;
+    _brightness = next;
     if (notify) notifyListeners();
+    _platform.setBrightness(next).then((applied) {
+      if (applied == null || _disposed) return;
+      // Android quantises to its own steps; adopt what it really did rather
+      // than showing the user a number the panel is not at.
+      if ((applied - _brightness).abs() > 0.005) {
+        _brightness = applied;
+        notifyListeners();
+      }
+    });
   }
 
   void nudgeBrightness(double delta) => setBrightness(_brightness + delta);
 
   void setVolume(double v) {
-    _volume = v.clamp(0.0, 1.0);
+    final next = v.clamp(0.0, 1.0);
+    if ((next - _volume).abs() < 0.001) return;
+    _volume = next;
     notifyListeners();
+    _platform.setVolume(next);
   }
 
   void nudgeVolume(double delta) => setVolume(_volume + delta);
 
-  void toggleDarkTheme() {
-    _darkThemeForced = !_darkThemeForced;
-    if (_darkThemeForced) {
-      _palette = AmbientPalette.forcedDark;
-    } else {
-      _onClockTick();
-    }
+  /// Adopt the device's real brightness/volume on launch, so the launcher does
+  /// not open showing 80% while the panel is actually at 40%.
+  Future<void> syncWithDeviceState() async {
+    final b = await _platform.getBrightness();
+    final v = await _platform.getVolumeFraction();
+    if (_disposed) return;
+    if (b != null) _brightness = b.clamp(0.0, 1.0);
+    if (v != null) _volume = v.clamp(0.0, 1.0);
     notifyListeners();
+  }
+
+  /// Switch the look. Persisted, because a wall display that forgets its theme
+  /// every reboot is worse than one that never had themes.
+  void setTheme(NestTheme t) {
+    if (_theme == t) return;
+    _theme = t;
+    _recomputePalette(force: true);
+    _settings.put(SettingKeys.theme, t.name);
+    notifyListeners();
+  }
+
+  /// The theme picker walks the list, so a single button cycles rather than
+  /// dead-ending on the last entry.
+  void cycleTheme() {
+    final values = NestTheme.values;
+    setTheme(values[(values.indexOf(_theme) + 1) % values.length]);
   }
 
   void toggleDoNotDisturb() {
@@ -382,6 +483,18 @@ class ShellController extends ChangeNotifier {
   @visibleForTesting
   void setPaletteForTest(AmbientPalette p) {
     _palette = p;
+    notifyListeners();
+  }
+
+  /// Pins the theme *and* its palette together.
+  ///
+  /// [setPaletteForTest] alone leaves `_theme` as `dynamic`, so the Digest
+  /// page would report "follows the time of day" while rendering a pinned
+  /// palette — a caption that contradicts what is on screen. Screenshots have
+  /// already caught that once; keep the two in step.
+  void setThemeForTest(NestTheme t) {
+    _theme = t;
+    _palette = AmbientPalette.of(t);
     notifyListeners();
   }
 }

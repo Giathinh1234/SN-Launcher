@@ -49,36 +49,48 @@ class _AmbientPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
+    final stops = palette.backgroundStops();
 
     // 1. Vertical base gradient.
+    //
+    // `stops` has to be derived from the colour count. A pinned flat theme
+    // returns a single colour, and handing LinearGradient three stops for one
+    // colour throws at paint time — which on a device means a red error box
+    // where the wallpaper should be.
     final base = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: palette.backgroundStops(),
-        stops: const [0.0, 0.55, 1.0],
+        colors: stops,
+        stops: _stopsFor(stops.length),
       ).createShader(rect);
     canvas.drawRect(rect, base);
 
     // 2. Soft off-centre bloom. The real device's diffuser never produces a
     //    perfectly flat field — there is always a gentle hotspot.
-    final bloomRadius = math.max(size.width, size.height) * 0.75;
-    final hotspot = Offset(size.width * 0.5, size.height * 0.42);
-    final bloomColor = palette.isDark
-        ? const Color(0xFF2A3358)
-        : const Color(0xFFFFF6E8);
-    canvas.drawCircle(
-      hotspot,
-      bloomRadius,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [
-            bloomColor.withValues(alpha: palette.isDark ? 0.30 : 0.55),
-            bloomColor.withValues(alpha: 0.0),
-          ],
-          stops: const [0.0, 1.0],
-        ).createShader(Rect.fromCircle(center: hotspot, radius: bloomRadius)),
-    );
+    //
+    //    Suppressed on flat palettes. Someone who pinned "White" asked for
+    //    white; washing a cream bloom across it is how a UI ends up looking
+    //    dirty rather than clean.
+    if (!palette.isFlat) {
+      final bloomRadius = math.max(size.width, size.height) * 0.75;
+      final hotspot = Offset(size.width * 0.5, size.height * 0.42);
+      final bloomColor = palette.isDark
+          ? const Color(0xFF2A3358)
+          : const Color(0xFFFFF6E8);
+      canvas.drawCircle(
+        hotspot,
+        bloomRadius,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              bloomColor.withValues(alpha: palette.isDark ? 0.30 : 0.55),
+              bloomColor.withValues(alpha: 0.0),
+            ],
+            stops: const [0.0, 1.0],
+          ).createShader(Rect.fromCircle(center: hotspot, radius: bloomRadius)),
+      );
+    }
 
     // 3. Brightness dimming (quick-settings slider / night mode).
     if (brightness < 0.999) {
@@ -87,6 +99,14 @@ class _AmbientPainter extends CustomPainter {
         Paint()..color = Colors.black.withValues(alpha: (1 - brightness).clamp(0.0, 1.0) * 0.78),
       );
     }
+  }
+
+  /// Evenly spread stops, matching the number of colours.
+  static List<double> _stopsFor(int n) {
+    if (n <= 1) return const [0.0];
+    if (n == 2) return const [0.0, 1.0];
+    // Three stops: the original shape was [0.0, 0.55, 1.0].
+    return const [0.0, 0.55, 1.0];
   }
 
   @override

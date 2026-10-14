@@ -114,6 +114,12 @@ const List<NestAction> kNestActions = [
 /// only uses discs for apps that are genuinely round.
 enum NestBadgeShape { circle, squircle }
 
+/// The seven buttons in the quick-settings row.
+///
+/// [darkTheme] is no longer a dark-mode toggle — it is the **theme** button,
+/// cycling Dynamic → White → Day → Afternoon → Night. [zoomIn] no longer goes
+/// to home control; it opens the Digest, which is where the calendar and
+/// weather cards live.
 enum QuickSettingKind { brightness, volume, camera, darkTheme, zoomIn, feedback, settings }
 
 @immutable
@@ -128,10 +134,23 @@ class QuickSetting {
     QuickSettingKind.brightness => 'Brightness',
     QuickSettingKind.volume => 'Volume',
     QuickSettingKind.camera => 'Camera',
-    QuickSettingKind.darkTheme => 'Dark theme',
-    QuickSettingKind.zoomIn => 'Details',
+    QuickSettingKind.darkTheme => 'Theme',
+    QuickSettingKind.zoomIn => 'Digest',
     QuickSettingKind.feedback => 'Send feedback',
     QuickSettingKind.settings => 'Settings',
+  };
+
+  /// One line of explanation for the a11y tooltip, naming what will actually
+  /// happen. A label that lies ("Camera") on a button that does nothing is the
+  /// defect this whole row was rebuilt to remove.
+  String get description => switch (kind) {
+    QuickSettingKind.brightness => 'Dim or restore the screen',
+    QuickSettingKind.volume => 'Mute or restore the volume',
+    QuickSettingKind.camera => 'Open the camera',
+    QuickSettingKind.darkTheme => 'Change the theme',
+    QuickSettingKind.zoomIn => 'Open your digest',
+    QuickSettingKind.feedback => 'Send feedback',
+    QuickSettingKind.settings => 'Open device settings',
   };
 }
 

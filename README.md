@@ -164,6 +164,134 @@ args keeps the build and the app inside a small memory envelope. `minSdk` is
 
 ---
 
+## The quick-settings row actually does things
+
+Four of the seven buttons used to be theatre. Brightness mutated a private
+field that nothing read; camera printed a toast reading "Camera toggled" and
+settings printed "Settings" — claiming an action neither had performed, which is
+worse than doing nothing because the user believes the device responded.
+
+Every button is now wired to a real platform capability over one MethodChannel
+(`dev.snlauncher/platform`), implemented in `PlatformBridge.kt`:
+
+| Button | What it does | Verified on the T20 |
+| --- | --- | --- |
+| Brightness | `window.attributes.screenBrightness`, plus `SCREEN_BRIGHTNESS_MODE_MANUAL` when the app is allowed to write it | panel mean luma 206 → 75 |
+| Volume | `AudioManager.setStreamVolume(STREAM_MUSIC, …)` | `dumpsys audio` logs `setStreamVolume index:13` from this package |
+| Camera | `ACTION_IMAGE_CAPTURE`, falling back through the other camera intents | foreground became `com.android.camera2/.CaptureActivity` |
+| Theme | Cycles Dynamic → White → Day → Afternoon → Night, persisted | survives a cold restart |
+| Digest | Closes the sheet, then opens the digest | sheet luma changed |
+| Feedback | Opens the Nest support page | foreground became Chrome |
+| Settings | `Settings.ACTION_SETTINGS` | foreground became `com.android.settings` |
+
+`tool/test_dock.sh` runs this whole table against a connected device. The one
+rule the implementation follows: **never report an action that did not happen.**
+If the platform refuses, the toast names the failure ("No camera on this
+device") rather than claiming success.
+
+Two details worth keeping in mind if you extend it:
+
+* The Dart setters update local state *first* and push to the platform
+  fire-and-forget. Awaiting the channel inside a drag handler makes the
+  brightness arc stutter. The platform's answer is then reconciled back,
+  because Android quantises to its own steps and will not be where you asked.
+* `WRITE_SETTINGS` is deliberately **not** declared. The system brightness write
+  degrades gracefully; the window brightness needs no permission at all.
+
+---
+
+## Themes
+
+Five, selectable from the digest page or by tapping the theme button:
+
+| | |
+| --- | --- |
+| **Dynamic** | Follows the clock — the old 24-keyframe Ambient EQ ramp, continuously interpolated |
+| **White** | Flat paper white |
+| **Day** | The Nest's measured daylight paper (238, 234, 228) with a cool cast |
+| **Afternoon** | Warmer and lower contrast |
+| **Night** | Soft blue-black |
+
+Two things changed deliberately:
+
+**The dark themes are lighter.** The old night palette ran down to `#070A14`.
+On an OLED-less e-waste LCD that does not read as "dark" — it reads as *off*,
+and the user assumes the device has hung. The floor is now `#121826`, which
+still clearly says night but leaves the panel visibly alive.
+
+**A pinned theme is flat and does not drift.** Someone who pinned White asked
+for white. A wall display that changes colour while someone is reading it is
+worse than one that is consistently dull. The bloom is also suppressed on flat
+palettes — a cream hotspot across a white background reads as dirt.
+
+Persistence is a 60-line `SettingsBridge.kt` over `SharedPreferences` rather
+than the `shared_preferences` plugin, because this project's Android build is
+already fragile (AGP shells out to `sdkmanager` during configuration, which is
+why the Gradle configuration cache has to stay off) and one more plugin is one
+more thing to go wrong for the sake of a dozen strings.
+
+---
+
+## Icons: Google's, not ours
+
+The launcher grid used to be 31 hand-plotted `CustomPainter` paths. The stroke
+weight was uniformly 4.2% of the box with round caps, which is no real design
+system's optical weight, and that mismatch is most of what made it read as
+generic Android.
+
+They are now Google's own Material Symbols, subsetted by `tool/build_icons.py`:
+
+* **15.2 MB → 35 KB.** The upstream variable font carries four axes (FILL,
+  GRAD, opsz, wght) that Flutter's `IconData` cannot address, so three of them
+  are dead weight. The build subsets to the 172 glyphs actually used and freezes
+  the axes to one static instance. Flutter then tree-shakes the result to 7 KB.
+* **Codepoints come from Google's authoritative `.codepoints` file**, never
+  guessed, and are cross-checked against the subset's own cmap before
+  `nest_icons.dart` is written. A wrong codepoint renders as the wrong icon or a
+  blank box and neither is obvious until you look at it.
+* **Licence is Apache 2.0**, not OFL — easy to get wrong when every other asset
+  in the project is OFL.
+* **Brand marks stay as paths.** Spotify, Netflix, Pandora and YouTube have
+  their own logos; substituting one approximation of a logo with another is
+  strictly worse than either. Only the generic icons were replaced.
+
+`test/icon_probe_test.dart` renders a labelled contact sheet and
+`flutter_test` renders everything else with Ahem unless the real font is loaded
+by hand — so a screenshot can show a grid of boxes and still "pass". Both the
+probe and `render_shell_test.dart` load the font explicitly for that reason.
+
+---
+
+## Calendar, weather and the photograph
+
+**Calendar** reads `CalendarContract.Instances` through the platform channel,
+asks for `READ_CALENDAR` once, and refreshes every five minutes and on resume.
+The card distinguishes "permission not granted" from "nothing else today" —
+the first version said "No more events today" in both cases, which claims you
+have a free day when in fact nothing was ever read.
+
+**Weather** is unchanged: Open-Meteo, no key, degrades offline. It still needs a
+pinned location (`--dart-define=NEST_LAT=… --dart-define=NEST_LON=…`), because a
+runtime location prompt is a real cost on a wall-mounted tablet nobody taps
+again.
+
+**The background is a real photograph** — *Cub Lake at dawn in Rocky Mountain
+National Park* by **Debra Miller**, public domain as a work of the US National
+Park Service. Fetched and licence-verified by `tool/fetch_photo.py`, which
+fails closed: if the live licence is not public domain, CC0 or plain CC-BY, it
+writes nothing.
+
+The photographer's name is rendered on screen next to "Recent highlights",
+which is what the licence and plain decency both ask for. Commons' `Artist`
+field for that file reads "NPS Natural Resources" — the owning agency, not the
+person who took the photograph — so the fetcher prefers the real name.
+
+The photo decodes at its intrinsic width, never wider: on a 2000px panel a
+1600px file decoded at 2000 would spend ~3 MB of extra bitmap on detail that
+does not exist.
+
+---
+
 ## Layout
 
 ```
@@ -172,14 +300,21 @@ lib/
   src/
     theme/
       nest_metrics.dart              every measured constant, design-canonical
-      ambient_palette.dart           24h time-of-day colour keyframes
+      ambient_palette.dart           the five themes + 24h time-of-day keyframes
       nest_type.dart                 Google Sans type scale
-    models/nest_action.dart          the 21 "Actions on Google" + quick settings
+      nest_theme.dart                Material 3 ColorScheme from the palette
+      nest_icons.dart                GENERATED Material Symbols subset
+    models/
+      nest_action.dart               the 21 "Actions on Google" + quick settings
+      photo_credit.dart              licence metadata for the bundled photograph
     services/
       clock_service.dart             aligned, minute-resolution ticking
       weather_service.dart           Open-Meteo, no key, degrades offline
+      calendar_service.dart          CalendarContract feed, permission-aware
+      platform_bridge.dart           typed MethodChannel wrapper
+      settings_store.dart            tiny persistence, no plugin
       action_launcher.dart           Android intents / Linux binaries / macOS bundles
-    state/shell_controller.dart      pages, sheet, assistant, brightness, volume, DND
+    state/shell_controller.dart      pages, sheet, assistant, theme, brightness, volume
     widgets/
       ambient_background.dart        one-pass ambient gradient + drag handle
       nest_glyphs.dart               vector icon painters

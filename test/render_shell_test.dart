@@ -24,6 +24,7 @@ class _Harness extends StatefulWidget {
     required this.sheet,
     required this.page,
     required this.out,
+    this.theme,
   });
 
   final Size size;
@@ -31,6 +32,9 @@ class _Harness extends StatefulWidget {
   final double sheet;
   final ShellPage page;
   final String out;
+
+  /// Pin a theme instead of deriving one from [hour]. Null = dynamic.
+  final NestTheme? theme;
 
   @override
   State<_Harness> createState() => _HarnessState();
@@ -47,9 +51,13 @@ class _HarnessState extends State<_Harness> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _controller = ShellController(metrics: NestMetrics.forSize(widget.size), vsync: this)
-      ..setPaletteForTest(AmbientPalette.at(widget.hour))
-      ..setSheetForTest(widget.sheet);
+    _controller = ShellController(metrics: NestMetrics.forSize(widget.size), vsync: this);
+    if (widget.theme == null) {
+      _controller.setPaletteForTest(AmbientPalette.at(widget.hour));
+    } else {
+      _controller.setThemeForTest(widget.theme!);
+    }
+    _controller.setSheetForTest(widget.sheet);
     _controller.goToPage(widget.page);
     _clock.overrideForTesting(DateTime(2022, 5, 26, 9, 45, 0));
   }
@@ -117,8 +125,32 @@ Future<void> _capture(
   await tester.pump();
 }
 
+
 void main() {
   setUpAll(_loadFonts);
+  // One contact sheet of every pinned theme, so the set can be judged as a set
+  // rather than one at a time. Dynamic is rendered at 20:30, where the sun is
+  // low and the palette is at its most different from plain Night.
+  for (final t in NestTheme.values) {
+    testWidgets('theme: ${t.name} @ 1280x800', (tester) async {
+      tester.view
+        ..physicalSize = const Size(1280, 800)
+        ..devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await _capture(
+        tester,
+        _Harness(
+          size: const Size(1280, 800),
+          hour: 20.5,
+          theme: t,
+          sheet: 1,
+          page: ShellPage.digest,
+          out: 'theme_${t.name}_1280x800',
+        ),
+      );
+    });
+  }
+
 
   setUp(() {
     // The test binding enables both of these, and `debugPaintSizeEnabled`
@@ -231,4 +263,22 @@ Future<void> _loadFonts() async {
 
   await load('GoogleSans', ['400', '500', '600', '700']);
   await load('Poppins', ['300', '400', '500']);
+
+  // Material Symbols has no weight variants — it is one frozen instance of a
+  // variable font — so the helper above, which looks for `$family-$weight.ttf`,
+  // finds nothing. Without loading it here every icon renders as an Ahem box
+  // and the screenshots quietly lie about the drawer's appearance.
+  final symbols = File('assets/fonts/MaterialSymbolsRounded.ttf');
+  if (symbols.existsSync()) {
+    await (FontLoader('MaterialSymbolsRounded')
+          ..addFont(Future<ByteData>.value(
+            ByteData.sublistView(symbols.readAsBytesSync()),
+          )))
+        .load();
+  } else {
+    throw StateError(
+      'assets/fonts/MaterialSymbolsRounded.ttf is missing — run '
+      'tool/build_icons.py. Icons would render as empty boxes.',
+    );
+  }
 }

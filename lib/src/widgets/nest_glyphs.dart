@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/nest_action.dart';
+import '../theme/nest_icons.dart';
 
 /// Every launcher glyph is drawn as vector geometry instead of shipped as a
 /// PNG.
@@ -72,10 +73,56 @@ class NestGlyphPainter extends CustomPainter {
 
   Color get _knockout => backdrop ?? color;
 
+  /// The generic (non-brand) launcher icons now come from Material Symbols.
+  ///
+  /// Brand marks are deliberately left as drawn paths: Spotify, Netflix and
+  /// YouTube have their own logos, and substituting an approximation of a logo
+  /// with another approximation of a logo is strictly worse than either. But a
+  /// generic "Calendar" or "Settings" has no identity to protect, and Google's
+  /// own glyph for it is better than anything hand-plotted — that mismatch
+  /// between Google's brand tiles and everything else was most of what made
+  /// the grid read as cheap.
+  ///
+  /// `null` means "draw it here instead".
+  static IconData? symbolFor(NestIconKind kind) => switch (kind) {
+        NestIconKind.calendar => NestIcons.CalendarMonth,
+        NestIconKind.camera => NestIcons.PhotoCamera,
+        NestIconKind.cast => NestIcons.Cast,
+        NestIconKind.clock => NestIcons.Schedule,
+        NestIconKind.contacts => NestIcons.Person,
+        NestIconKind.games => NestIcons.SportsEsports,
+        NestIconKind.home => NestIcons.Home,
+        NestIconKind.meet => NestIcons.Videocam,
+        NestIconKind.music => NestIcons.MusicNote,
+        NestIconKind.news => NestIcons.Article,
+        NestIconKind.photos => NestIcons.Collections,
+        NestIconKind.podcasts => NestIcons.Podcasts,
+        NestIconKind.reminders => NestIcons.EventAvailable,
+        NestIconKind.settings => NestIcons.Settings,
+        NestIconKind.stories => NestIcons.PhotoAlbum,
+        NestIconKind.timer => NestIcons.Timer,
+        NestIconKind.weather => NestIcons.WbSunny,
+        NestIconKind.youtube => NestIcons.PlayArrow,
+        NestIconKind.youtubeTv => NestIcons.Tv,
+        NestIconKind.assistant => NestIcons.AutoAwesome,
+        NestIconKind.broadcast => NestIcons.CastConnected,
+        NestIconKind.zoom => NestIcons.Videocam,
+        // Netflix and Pandora are wordmarks, not glyphs; they keep their paths.
+        NestIconKind.netflix => null,
+        NestIconKind.pandora => null,
+      };
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = math.min(size.width, size.height);
     final c = Offset(size.width / 2, size.height / 2);
+
+    final symbol = symbolFor(kind);
+    if (symbol != null) {
+      _paintSymbol(canvas, c, s, symbol);
+      return;
+    }
+
     canvas.save();
     canvas.translate(c.dx, c.dy);
 
@@ -380,6 +427,32 @@ class NestGlyphPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant NestGlyphPainter old) =>
       old.kind != kind || old.color != color || old.strokeScale != strokeScale;
+
+  /// Draw a Material Symbols glyph centred in an `s`-sized box.
+  ///
+  /// A TextPainter rather than an `Icon` widget because this class is a
+  /// CustomPainter invoked from the badge's own paint pass — wrapping it in
+  /// another widget would add a layer to each of the 31 badges.
+  void _paintSymbol(Canvas canvas, Offset centre, double s, IconData icon) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          // 20 of the 24-unit em box, matching Material's own optical margin.
+          fontSize: s / 24 * 20,
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+          color: color,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    painter.paint(
+      canvas,
+      centre - Offset(painter.width / 2, painter.height / 2),
+    );
+  }
 }
 
 /// Draws the circular brand badge + glyph used throughout the launcher.
@@ -449,96 +522,54 @@ class _QuickSettingPainter extends CustomPainter {
   final QuickSettingKind kind;
   final Color color;
 
+  /// Google's own glyph for each quick setting.
+  ///
+  /// These replace hand-drawn paths. The hand-drawn set read as generic
+  /// Android: its strokes were uniformly 4.2% of the box with round caps,
+  /// which is no real design system's optical weight, and the gear was the
+  /// only one that had any character at all. Material Symbols are drawn on a
+  /// 24-unit grid with tuned terminals, so the whole row picks up Google's
+  /// corner and weight language for free — and the row is now unmistakably
+  /// Google rather than "an icon set".
+  static IconData iconFor(QuickSettingKind kind) => switch (kind) {
+        QuickSettingKind.brightness => NestIcons.Brightness7,
+        QuickSettingKind.volume => NestIcons.VolumeUp,
+        QuickSettingKind.camera => NestIcons.PhotoCamera,
+        // The theme button, not a dark-mode toggle. A sun reads as "make it
+        // light"; the sun/moon pair in Google's iconography is a much more
+        // recognisable way to say "this changes the look".
+        QuickSettingKind.darkTheme => NestIcons.LightMode,
+        QuickSettingKind.zoomIn => NestIcons.AutoAwesome,
+        QuickSettingKind.feedback => NestIcons.Feedback,
+        QuickSettingKind.settings => NestIcons.Settings,
+      };
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = math.min(size.width, size.height);
     final c = Offset(size.width / 2, size.height / 2);
-    canvas.save();
-    canvas.translate(c.dx, c.dy);
-    canvas.scale(s, s);
-    final stroke = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.042
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final fill = Paint()..color = color;
 
-    switch (kind) {
-      case QuickSettingKind.brightness:
-        canvas.drawCircle(Offset.zero, 0.20, stroke);
-        for (var i = 0; i < 8; i++) {
-          final a = i * math.pi / 4;
-          canvas.drawLine(
-            Offset(math.cos(a), math.sin(a)) * 0.28,
-            Offset(math.cos(a), math.sin(a)) * 0.40,
-            stroke,
-          );
-        }
-      case QuickSettingKind.volume:
-        canvas.save();
-        canvas.rotate(-0.35);
-        canvas.drawPath(
-          Path()
-            ..moveTo(-0.34, -0.13)
-            ..lineTo(-0.14, -0.13)
-            ..lineTo(0.02, -0.30)
-            ..lineTo(0.02, 0.30)
-            ..lineTo(-0.14, 0.13)
-            ..lineTo(-0.34, 0.13)
-            ..close(),
-          fill,
-        );
-        for (final r in [0.20, 0.31]) {
-          canvas.drawArc(
-            Rect.fromCircle(center: const Offset(0.02, 0), radius: r),
-            -1.0, 2.0, false, stroke,
-          );
-        }
-        canvas.restore();
-      case QuickSettingKind.camera:
-        canvas.drawPath(
-          Path()
-            ..addRRect(RRect.fromRectAndRadius(
-                Rect.fromCenter(center: const Offset(-0.10, 0), width: 0.54, height: 0.40),
-                const Radius.circular(0.07)))
-            ..moveTo(0.19, -0.09)
-            ..lineTo(0.42, -0.22)
-            ..lineTo(0.42, 0.22)
-            ..lineTo(0.19, 0.09)
-            ..close(),
-          stroke..strokeWidth = 0.042,
-        );
-      case QuickSettingKind.darkTheme:
-        canvas.drawCircle(Offset.zero, 0.34, stroke);
-        canvas.drawLine(const Offset(-0.17, 0), const Offset(0.17, 0), stroke);
-      case QuickSettingKind.zoomIn:
-        canvas.drawCircle(Offset.zero, 0.34, stroke);
-        canvas.drawLine(const Offset(-0.15, 0), const Offset(0.15, 0), stroke);
-        canvas.drawLine(const Offset(0, -0.15), const Offset(0, 0.15), stroke);
-      case QuickSettingKind.feedback:
-        final p = Path()
-          ..moveTo(-0.40, -0.28)
-          ..lineTo(0.40, -0.28)
-          ..lineTo(0.40, 0.22)
-          ..lineTo(-0.06, 0.22)
-          ..lineTo(-0.22, 0.40)
-          ..lineTo(-0.22, 0.22)
-          ..lineTo(-0.40, 0.22)
-          ..close();
-        canvas.drawPath(p, stroke);
-        canvas.drawLine(const Offset(-0.13, 0.05), const Offset(0.13, 0.05), stroke);
-        canvas.drawCircle(const Offset(0, -0.09), 0.035, fill);
-      case QuickSettingKind.settings:
-        // A gear must not read as a sun — the brightness tile right next to it
-        // is a sun, and two near-identical glyphs side by side is a trap for
-        // anyone reaching for the wrong one. Outlined rather than filled, to
-        // match the rest of the row.
-        canvas.drawPath(_gearPath(outer: 0.47, inner: 0.35),
-            stroke..strokeWidth = 0.055);
-        canvas.drawCircle(Offset.zero, 0.16, stroke..strokeWidth = 0.055);
-    }
-    canvas.restore();
+    // Material Symbols are authored on a 24x24 em box, so scale that rather
+    // than the -0.5..0.5 space the old painters used. 0.86 leaves the optical
+    // margin Google's own layouts assume.
+    final icon = iconFor(kind);
+    final painter = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          fontSize: s / 24 * 20,
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+          color: color,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    painter.paint(
+      canvas,
+      c - Offset(painter.width / 2, painter.height / 2),
+    );
   }
 
   @override
