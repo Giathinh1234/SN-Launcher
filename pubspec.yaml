@@ -1,0 +1,46 @@
+name: sn_launcher
+description: >-
+  SN-Launcher — a Google Nest Hub style launcher for Android and
+  Unix/Linux desktops, tuned for low-RAM e-waste hardware.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    # The real Nest Hub uses Google Sans (SIL OFL since Dec 2025). Shipping
+    # the genuine face is what makes the clock read as "Google" instantly.
+    - family: GoogleSans
+      fonts:
+        - asset: assets/fonts/GoogleSans-400.ttf
+          weight: 400
+        - asset: assets/fonts/GoogleSans-500.ttf
+          weight: 500
+        - asset: assets/fonts/GoogleSans-600.ttf
+          weight: 600
+        - asset: assets/fonts/GoogleSans-700.ttf
+          weight: 700
+    # Used only for the optional "Timeless Light" clock face.
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500

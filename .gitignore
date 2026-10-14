@@ -1,0 +1,85 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SN-Launcher — ignore rules
+#
+# The important part of this file is the **Secrets** block. SN-Launcher is a
+# launcher app with no server and no API keys of its own, but it sits in the
+# same working directory as whatever else you build, and people habitually drop
+# a `.env` next to a project. Committing one leaks whatever is in it — and a
+# leaked key is leaked forever, because it stays in the git history even after
+# you delete the file in a later commit.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Secrets ─────────────────────────────────────────────────────────────────
+# Never commit real credentials.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets.json
+secrets.yaml
+credentials.json
+service-account*.json
+gha-creds-*.json
+.npmrc
+.pypirc
+.netrc
+
+# ── Flutter / Dart ───────────────────────────────────────────────────────────
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pubspec.lock          # apps: commit this deliberately; libraries: ignore it
+
+# ── Android ─────────────────────────────────────────────────────────────────
+android/.gradle/
+android/captures/
+android/gradle.properties.bak
+android/local.properties      # contains your SDK path — machine-specific
+android/app/debug/
+android/app/profile/
+android/app/release/
+*.apk
+*.aab
+*.jks
+android/key.properties
+
+# ── Desktop / native ─────────────────────────────────────────────────────────
+macos/Pods/
+macos/Flutter/ephemeral/
+linux/flutter/ephemeral/
+*.dylib
+*.so
+
+# ── Editors / OS ─────────────────────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+!.vscode/extensions.json
+*.swp
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Logs, coverage, captures from the device test rig ────────────────────────
+*.log
+coverage/
+build/device/*.png
+build/shots/*.png
+!build/device/.gitkeep
+
+# ── Scratch ──────────────────────────────────────────────────────────────────
+scratch/
+tmp/
+*.bak

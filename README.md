@@ -1,0 +1,311 @@
+# SN-Launcher
+
+**v0.1.0**
+
+A Google Nest Hub style launcher that runs on **Android** and **Unix/Linux/macOS**
+desktops from a single Flutter codebase, built to look like the real device and
+to stay smooth on e-waste hardware.
+
+> The real Nest Hub UI is itself written in Flutter ("Dragonglass", shipped on
+> both Cast OS and Fuchsia), so this is the same technology stack Google chose —
+> which is what makes matching its rendering and animation behaviour realistic.
+
+---
+
+## Where the numbers come from
+
+Google has never published a single dp metric, font size, colour value or
+animation duration for the Nest launcher. Every constant in
+`lib/src/theme/nest_metrics.dart` was therefore **measured**, not guessed:
+
+1. Real photographs of a Nest Hub and a Nest Hub Max were downloaded.
+2. The four display corners were found in each photo.
+3. A homography was solved and the photo was rectified onto the device's flat
+   native canvas — `1024x600` for the Hub, `1280x800` for the Max.
+4. Pixel runs for each glyph, icon and hairline were read off the rectified
+   image with NumPy.
+
+The rectified references live in `refs/`. The result is verified by rendering
+the app headlessly at device resolutions and diffing the two — see
+[Verification](#verification) for the measured error.
+
+### Two things the naive approach gets wrong
+
+**The two devices are not the same shape.** The Nest Hub is 1024x600
+(1.707 aspect) and the Hub Max is 1280x800 (**1.600**). They share a 1.25x
+width scale but a 1.333x height scale. Copying the Max's pixel offsets onto the
+Hub's canvas with one uniform factor lands the sheet rows about 24px too low.
+Everything inside the bottom sheet is therefore positioned as a **fraction of
+the sheet's own height**, which is stable across both devices and across any
+odd-shaped screen.
+
+**Google Sans sets its digits far wider than the Nest's clock.** Its digit
+advance is 0.643 em, rendering `09:45` at 220px where the device measures
+**195px**. The tracking has to be pulled in (`letterSpacing: -2.15`) to match.
+
+### Measured geometry (1024x600 design canvas)
+
+| Element | Measured on device | In this build |
+| --- | --- | --- |
+| Clock digit block | 61 px tall, y 461–521 | **61 px, y 461–521** |
+| `"09:45"` run width | 195 px, x 69–264 | **194 px, x 69–262** |
+| Date line | 120 px wide, cap top y 422 | **123 px, y 424** |
+| Temperature | 42 px wide, 26 px cap | **42 px, 26 px** |
+| Album title | 119 px wide, right edge x 973 | **117 px, x 970** |
+| Drag handle | 41 x 5.6 px | matches |
+| Sheet top | 49.6 % of screen height | matches |
+| App badge | 100 px across (Max) | matches |
+| App row pitch | ~148 px (Max) | **147 px** |
+| Sheet surface colour | `#EFEDE6` | matches |
+
+Max residual error is **9 px on a 1280-wide canvas (0.7 %)**.
+
+### Typography
+
+The device uses **Google Sans**. Google released it under the SIL Open Font
+License, so the genuine face is bundled rather than an approximation — it is
+the single biggest reason the clock reads as "Google" instantly. Poppins is
+included at weight 300 for the device's thinner "Timeless Light" clock face.
+
+---
+
+## Hybrid CPU / GPU
+
+The two halves are used deliberately, and neither is asked to do the other's job.
+
+**GPU does everything spatial.** Rasterisation and compositing run on Impeller
+over Vulkan — every gradient, glyph path, badge and the sheet itself. The
+ambient background is one `CustomPaint`; the launcher sheet is a `RepaintBoundary`
+so it rasterises once and is then only blitted while it slides. Measured GPU
+memory on the T20 is **564 KB**.
+
+**CPU does everything blocking.** Anything that can stall — a socket read, a JSON
+decode — runs on a worker isolate, never the UI thread:
+
+```dart
+// top-level, deliberately: inside a method the AOT compiler folds `this` into
+// the closure context and Isolate.run refuses to send it.
+Future<_WeatherReading?> _fetchOnWorker(double lat, double lon) =>
+    Isolate.run(() => _fetchAndParse(lat: lat, lon: lon));
+```
+
+Frame *cost* stays on the UI thread where it belongs: layout, hit testing and the
+gesture state machine.
+
+**The GPU path can be swapped at build time.** Some older or badly-finned
+Mali/Adreno drivers misbehave under Vulkan, and there the engine's Skia/OpenGL
+backend is the reliable one:
+
+```bash
+flutter build apk --release -PenableImpeller=false
+```
+
+The switch is a Gradle property (`enableImpeller` in `android/gradle.properties`)
+resolved into the manifest placeholder. Confirmed working on the T20 — the engine
+logs `Impeller opt-out deprecated… opted out of Impeller`. Note that Flutter is
+deprecating this escape hatch, so treat it as a compatibility valve rather than a
+long-term strategy.
+
+**Frame timing is measurable on-device**, which matters because `dumpsys gfxinfo`
+reports zero frames for any Flutter app (Flutter bypasses Android's HWUI
+pipeline) and SurfaceFlinger cannot sample a BLAST-backed surface:
+
+```bash
+flutter build apk --release --dart-define=PERF_OVERLAY=true
+```
+
+It adds a corner readout of average/worst frame cost and a jank count. Off by
+default, so it costs nothing in a normal build.
+
+---
+
+## Running on weak hardware
+
+This is a 1–2 GB device target, so the architecture is built around cost, not
+around convenience.
+
+**Vector icons, not PNGs.** All 24 launcher glyphs and the 7 quick-settings
+glyphs are `CustomPainter` paths (`lib/src/widgets/nest_glyphs.dart`). A PNG
+icon set would cost several MB of decoded texture resident on the GPU, which is
+precisely what a 1 GB tablet cannot spare — and it would be blurry on a 4K
+monitor. Paths cost nothing to load and are sharp everywhere.
+
+**One paint pass for the background.** The ambient gradient plus its centre
+bloom is a single `CustomPainter`. A stack of translucent containers would
+force an offscreen compositing layer each; this is effectively free.
+
+**Minute-resolution clock by default.** `ClockService` only wakes on the minute
+boundary unless seconds are enabled, and it aligns to the wall clock so digits
+never stutter. The clock block sits behind its own `RepaintBoundary`, so a tick
+repaints ~200 px² instead of the whole screen.
+
+**Layer hygiene.** The drawer sets `addRepaintBoundaries: false` and
+`addAutomaticKeepAlives: false` — 24 cells do not each need a retained layer on
+a device with a small GPU memory budget.
+
+**No blur, ever.** `BackdropFilter` is the single most expensive primitive in
+Flutter on low-end GPUs. The real Nest does not blur its sheet either; it uses
+a flat scrim, so there is nothing to lose.
+
+**Right-sized heap.** `android:largeHeap="false"` plus conservative Gradle JVM
+args keeps the build and the app inside a small memory envelope. `minSdk` is
+21, which covers essentially every e-waste Android tablet still in circulation.
+
+---
+
+## Input
+
+| | |
+| --- | --- |
+| Touch | Swipe up from the bottom to open the launcher, past the detent for the full grid; swipe left/right for the page carousel; tap the centre to talk |
+| Keyboard / D-pad / Android TV remote | Arrow up opens, down closes, left/right move pages, Esc backs out, Space toggles listening |
+| Microphone | `ShellController.beginListening()` drives the four-dot Assistant animation; wake word + STT is the next milestone |
+| MCP / remote | The whole shell is driven through `ShellController`, so a remote or MCP bridge only needs to call its public verbs |
+
+---
+
+## Layout
+
+```
+lib/
+  main.dart                          app entry, orientation lock, immersive mode
+  src/
+    theme/
+      nest_metrics.dart              every measured constant, design-canonical
+      ambient_palette.dart           24h time-of-day colour keyframes
+      nest_type.dart                 Google Sans type scale
+    models/nest_action.dart          the 21 "Actions on Google" + quick settings
+    services/
+      clock_service.dart             aligned, minute-resolution ticking
+      weather_service.dart           Open-Meteo, no key, degrades offline
+      action_launcher.dart           Android intents / Linux binaries / macOS bundles
+    state/shell_controller.dart      pages, sheet, assistant, brightness, volume, DND
+    widgets/
+      ambient_background.dart        one-pass ambient gradient + drag handle
+      nest_glyphs.dart               vector icon painters
+      clock_block.dart               date / clock / weather / album title
+      launcher_sheet.dart            app row + quick settings
+      app_drawer.dart                six-column "See all" grid
+      assistant_orb.dart             Google four-dot Assistant mark
+    screens/nest_shell.dart          gesture layer and z-order
+test/render_shell_test.dart          renders the shell to PNG at device resolutions
+refs/                                rectified reference photographs
+```
+
+---
+
+## Verified on real hardware
+
+Tested on a **Nokia T20** (Android 13, 3.8 GB RAM, UNISOC T610 / Mali-G52,
+1200x2000, 60 Hz) — squarely inside the e-waste target. Impeller/Vulkan, release
+build, arm64.
+
+| | measured | expected |
+| --- | --- | --- |
+| Clock block, left edge | 135 px | 135 px |
+| Clock block, digit height | 116 px | 119 px |
+| App badge pitch (sheet + drawer) | 118.0 px | 118 px |
+| Sheet app-row centre | 810 px | 811 px |
+| Sheet top edge | 605 px | 604 px |
+| Frame cost, idle | 10.9 ms | ≤ 16.7 ms |
+| Frame cost, sheet animation | 11.0 ms | ≤ 16.7 ms |
+| Total PSS | 65 MB | — |
+| **GPU memory** | **564 KB** | — |
+
+The GPU figure is the one worth keeping: it is the payoff for drawing every icon
+as vector paths. A PNG icon set would have cost several MB of resident texture.
+
+Four bugs only real hardware could surface:
+
+1. **First-frame MediaQuery.** The first frame reported a smaller size than the
+   settled one, and `late final` locked the shell to the wrong scale for its
+   whole life — everything rendered 5% small. Metrics are now recomputed per
+   frame.
+2. **Animation controllers weren't in the listen list.** The shell listened to
+   `ShellController` (a `ChangeNotifier`) but the sheet and carousel animate
+   *separate* `AnimationController`s, which notify their own listeners. The UI
+   only repainted by accident whenever the clock ticked; the sheet froze
+   part-way through opening.
+3. **Bottom-edge swipes arrive as cancels.** Android claims a swipe that starts
+   on the very bottom edge for its own gesture. Without settling on cancel the
+   sheet stuck at ~65% open.
+4. **Immutable frame cost.** The sheet animation ran at 17.2 ms — over budget.
+   Every frame of the drag was rebuilding the clock, the carousel and the whole
+   bottom sheet. Scoping the sheet to its own `AnimatedBuilder` and giving it a
+   `RepaintBoundary` brought it to 11.0 ms.
+
+Back is also handled now: it backs out one level instead of quitting the app,
+because a launcher should never be dismissed by Back.
+
+---
+
+## Verification
+
+```bash
+flutter test test/render_shell_test.dart     # writes build/shots/*.png
+```
+
+Renders the shell headlessly at 1024x600 and 1280x800 across the day/night
+palette, the launcher sheet and the drawer, so the layout can be diffed against
+`refs/`.
+
+Two things the harness has to handle, both discovered the hard way:
+
+- `toImage()` / `toByteData()` do real async work on the raster thread and only
+  progress inside `tester.runAsync()`.
+- `ClockService(autoTick:)` and `NestShell(animateDecorations:)` exist purely so
+  screenshots can disable the self-rescheduling clock timer and the looping
+  weather/Assistant animations — otherwise the fake-async zone never quiesces.
+
+---
+
+## Build
+
+```bash
+flutter pub get
+flutter build apk --release          # Android, per-ABI splits
+flutter build linux --release        # Linux kiosk
+flutter build macos --release        # macOS
+```
+
+### Raspberry Pi / Linux kiosk
+
+The Linux runner understands two flags:
+
+```bash
+nestlaunch --kiosk            # undecorated, fullscreen
+nestlaunch --size=1024x600    # force an exact panel size
+```
+
+---
+
+## Deliberately deferred
+
+### MCP / remote control — put down for now
+
+Originally this had MCP (Model Context Protocol) in the input table: driving the
+launcher from an AI assistant or another device. **That has been taken out and
+parked deliberately.** It is not half-built and not broken — it was cut before
+any protocol code was written, to keep v1 focused on the launcher itself.
+
+It can be picked up later, and it will be cheap when it is, because the work is
+already done: `ShellController` is the single owner of page navigation, the
+sheet, the assistant state, brightness, volume and DND, and every one of those is
+already a public method. A remote or MCP bridge needs to call those methods and
+nothing else — there is no UI state to reverse-engineer, and no platform channel
+to add. The only genuinely new pieces would be the transport and an auth story.
+
+### Other known gaps
+
+- Microphone wake word and speech-to-text are not wired up; the Assistant
+  animation is driven by a timer.
+- Launching apps is implemented (deep links / native binaries) but untested on
+  a real device.
+- The photo-frame background is a flat ambient gradient — wiring up a real photo
+  library is the next visual milestone.
+- Quick-settings tiles currently show state but do not yet change system volume
+  or brightness.
+- The nested `_DigestPage` / `_HomeControlPage` cards are placeholder content,
+  not wired to real calendar or device data.
+- Weather works, but only via the pinned-coordinate build flag — there is no
+  runtime location prompt or geocoding yet.

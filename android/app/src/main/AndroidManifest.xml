@@ -1,0 +1,91 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Launching real apps from the grid, and (optionally) a geolocation fix
+         for weather. Both are optional: the launcher degrades gracefully when
+         neither is granted. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.KEEP_SCREEN_ON"/>
+
+    <!-- Touchscreen, but not required to be a phone: Nest Hubs, Raspberry Pi
+         panels, HDMI sticks and repurposed tablets all qualify. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+
+    <application
+        android:label="Nest Launcher"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:hardwareAccelerated="true"
+        android:largeHeap="false"
+        android:isGame="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:screenOrientation="sensorLandscape"
+            android:resizeableActivity="false"
+            android:windowSoftInputMode="adjustResize">
+
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"/>
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+                <!-- Lets the launcher be offered as a HOME app on tablets and
+                     TV boxes, which is how a Nest Hub replacement should
+                     behave on a repurposed device. -->
+                <category android:name="android.intent.category.HOME"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2"/>
+
+        <!-- GPU path. Read from the `enableImpeller` Gradle property so a
+             build can fall back to the engine's Skia/OpenGL backend on GPU
+             stacks whose Vulkan driver misbehaves. See app/build.gradle.kts. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="${enableImpeller}" />
+
+        <!-- Hybrids that render correctly on either backend are far cheaper to
+             rasterise. Harmless where unsupported; ignored by Skia. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableWideGamut"
+            android:value="false" />
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Required on Android 11+ so url_launcher can see and open other
+             apps' deep links (spotify:, https://music.youtube.com, ...). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="spotify" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
+</manifest>
