@@ -14,13 +14,19 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
+    <!-- Be explicit that the framework handles Back. Flutter only claims it once
+     a Navigator exists and calls setFrameworkHandlesBack(true); opting in keeps
+     routing consistent from Android 13 through 16 instead of relying on the
+     API-36 default. Note the comment sits outside the tag: XML does not allow
+     comments inside a start tag's attribute list. -->
     <application
-        android:label="Nest Launcher"
+        android:label="SN-Launcher"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
         android:largeHeap="false"
+        android:enableOnBackInvokedCallback="true"
         android:isGame="false">
 
         <activity

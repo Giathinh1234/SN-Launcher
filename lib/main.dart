@@ -79,6 +79,27 @@ class _NestLauncherAppState extends State<NestLauncherApp>
         scaffoldBackgroundColor: const Color(0xFF000000),
         useMaterial3: true,
       ),
+
+      // A route must exist. Without one, `WidgetsApp` builds no `Navigator`
+      // at all (it decides this from `home`/`routes`/`onGenerateRoute`), and
+      // `PopScope` — which registers against a `ModalRoute` — silently does
+      // nothing. Back then falls through to `SystemNavigator.pop()` and the
+      // launcher exits, which is exactly what it used to do.
+      home: Builder(builder: (context) {
+        final m = NestMetrics.of(context);
+        _controller ??= ShellController(metrics: m, vsync: this);
+        return Stack(
+          children: [
+            NestShell(
+              controller: _controller!,
+              clock: _clock,
+              weather: _weather,
+            ),
+            if (FrameStats.enabled) PerfOverlay(stats: _frameStats),
+          ],
+        );
+      }),
+
       builder: (context, child) {
         // Replace the opaque error box with the actual message, so a failure on
         // a device you cannot attach a debugger to is readable on the screen.
@@ -101,7 +122,6 @@ class _NestLauncherAppState extends State<NestLauncherApp>
             'x${m.size.height.toStringAsFixed(1)}'
             ' dpr=${MediaQuery.maybeOf(context)?.devicePixelRatio}'
             ' u=${m.u.toStringAsFixed(4)}');
-        _controller ??= ShellController(metrics: m, vsync: this);
 
         // Optional pinned location, so weather works without a runtime location
         // prompt — a real cost on a wall-mounted tablet nobody taps again:
@@ -112,6 +132,7 @@ class _NestLauncherAppState extends State<NestLauncherApp>
           _weatherConfigured = true;
           _weather.configure(latitude: lat, longitude: lon);
         }
+
         return MediaQuery.withNoTextScaling(
           child: AnnotatedRegion<SystemUiOverlayStyle>(
             value: SystemUiOverlayStyle.light,
@@ -121,14 +142,10 @@ class _NestLauncherAppState extends State<NestLauncherApp>
             // in the shell renders in it.
             child: Material(
               color: const Color(0xFF000000),
-              child: Stack(children: [
-                NestShell(
-                  controller: _controller!,
-                  clock: _clock,
-                  weather: _weather,
-                ),
-                if (FrameStats.enabled) PerfOverlay(stats: _frameStats),
-              ]),
+              // `child` IS the Navigator. Dropping it is what leaves the app
+              // with no route stack at all. It has to sit inside the returned
+              // subtree so the route inherits this Material's text style.
+              child: child,
             ),
           ),
         );

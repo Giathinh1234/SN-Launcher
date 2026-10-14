@@ -32,6 +32,7 @@ class ClockBlock extends StatelessWidget {
     this.showSeconds = false,
     this.lightFace = false,
     this.animateWeather = true,
+    this.forceLightText = false,
     this.albumTitle,
   });
 
@@ -50,12 +51,17 @@ class ClockBlock extends StatelessWidget {
   /// Whether the weather glyph animates. Disabled for screenshots.
   final bool animateWeather;
 
+  /// Force white text. Set when the block sits over a photograph, where the
+  /// palette's own ink colour would be picked for a flat field and would
+  /// disappear into the picture — the device always uses white here.
+  final bool forceLightText;
+
   /// Bottom-right album / photo-frame title.
   final String? albumTitle;
 
   @override
   Widget build(BuildContext context) {
-    final color = palette.onSurface;
+    final color = forceLightText ? const Color(0xFFFFFFFF) : palette.onSurface;
     final timeText =
         ClockService.time(now, use24Hour: use24Hour, withSeconds: showSeconds);
 

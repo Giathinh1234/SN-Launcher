@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 
@@ -13,6 +14,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/assistant_orb.dart';
 import '../widgets/clock_block.dart';
 import '../widgets/launcher_sheet.dart';
+import '../widgets/photo_frame.dart';
 
 /// The Nest launcher shell.
 ///
@@ -73,8 +75,26 @@ class _NestShellState extends State<NestShell> {
 
   late final ShellController _c = widget.controller;
 
+  /// The pointer currently dragging the sheet, if any. Single-owner so a
+  /// second finger cannot cancel the drag in progress.
+  int? _dragPointer;
   double _dragStartY = 0;
-  bool _draggingSheet = false;
+  late VelocityTracker _velocity =
+      VelocityTracker.withKind(PointerDeviceKind.touch);
+
+  /// Shared tail for pointer-up and pointer-cancel.
+  void _settleSheet(PointerEvent e) {
+    if (e.pointer != _dragPointer) return;
+    _dragPointer = null;
+    _velocity.addPosition(e.timeStamp, e.position);
+    // Positive is downward.
+    final v = _velocity.getVelocityEstimate()?.pixelsPerSecond.dy ?? 0;
+    _c.onSheetDragEnd(
+      v,
+      _m.sheetHeight,
+      isDiscover: _c.sheetProgress > 0.92,
+    );
+  }
 
   /// Suggested six: the device ships most-used actions, and these are the
   /// defaults observed on a freshly-provisioned Hub.
@@ -161,33 +181,42 @@ class _NestShellState extends State<NestShell> {
             return Listener(
               behavior: HitTestBehavior.opaque,
               onPointerDown: (e) {
+                // One finger owns the drag. A second finger landing mid-drag
+                // used to clear the state flag, leaving the controller
+                // dragging with a stale origin.
+                if (_dragPointer != null) return;
+
+                // Grabbable from the bottom edge, or anywhere on the sheet
+                // while it is already showing. Restricting this to the bottom
+                // strip is what made the sheet impossible to pull back down.
+                final sheetTop =
+                    _m.size.height - _c.sheetProgress * _m.sheetHeight;
+                final onSheet = _c.sheetProgress > 0.02 && e.position.dy > sheetTop;
+                if (!onSheet && e.position.dy < _m.size.height * 0.72) return;
+
+                _dragPointer = e.pointer;
                 _dragStartY = e.position.dy;
-                _draggingSheet = e.position.dy > _m.size.height * 0.72;
+                _velocity = VelocityTracker.withKind(e.kind)
+                  ..addPosition(e.timeStamp, e.position);
+                _c.onSheetDragStart(_c.sheetProgress);
               },
               onPointerMove: (e) {
-                if (!_draggingSheet) return;
-                _c.onSheetDragUpdate(e.position.dy - _dragStartY, _m.size.height);
+                if (e.pointer != _dragPointer) return;
+                _velocity.addPosition(e.timeStamp, e.position);
+                // Normalised by the sheet's own travel, so it tracks the
+                // finger 1:1.
+                _c.onSheetDragUpdate(
+                  e.position.dy - _dragStartY,
+                  _m.sheetHeight,
+                );
               },
-              onPointerUp: (e) {
-                if (_draggingSheet) {
-                  _c.onSheetDragEnd(
-                    0,
-                    _m.size.height,
-                    isDiscover: _c.sheetProgress > 0.92,
-                  );
-                }
-                _draggingSheet = false;
-              },
-              onPointerCancel: (_) {
-                // A swipe that begins on the very bottom edge is claimed by
-                // Android's home gesture part-way through, so the drag arrives
-                // here as a cancel rather than an up. Without settling on
-                // cancel the sheet simply freezes wherever the finger got to —
-                // which on a real tablet left it stuck ~65% open.
-                if (_draggingSheet) {
-                  _c.onSheetDragEnd(0, _m.size.height, isDiscover: false);
-                }
-                _draggingSheet = false;
+              onPointerUp: (e) => _settleSheet(e),
+              onPointerCancel: (e) {
+                // A swipe starting on the very bottom edge is claimed by
+                // Android's home gesture part-way through, so a cancel is a
+                // normal ending. Without settling here the sheet froze
+                // wherever the finger happened to stop.
+                _settleSheet(e);
               },
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -261,7 +290,11 @@ class _NestShellState extends State<NestShell> {
                                       opacity: 1 - progress * 2,
                                       child: Center(
                                         child: DragHandle(
-                                          color: palette.onSurface,
+                                          // White on the photo frame, palette
+                                          // ink elsewhere.
+                                          color: _c.page == ShellPage.home
+                                              ? const Color(0xFFFFFFFF)
+                                              : palette.onSurface,
                                           scale: _m.u,
                                         ),
                                       ),
@@ -331,7 +364,11 @@ class _NestShellState extends State<NestShell> {
     final now = widget.clock.now;
     switch (page) {
       case ShellPage.home:
-        return ClockBlock(
+        return Stack(fit: StackFit.expand, children: [
+          PhotoFrameBackground(metrics: _m, palette: palette),
+          // Over a photograph the clock is always white, like the device — the
+          // scrim in PhotoFrameBackground is what keeps it legible.
+          ClockBlock(
           metrics: _m,
           type: type,
           palette: palette,
@@ -339,9 +376,11 @@ class _NestShellState extends State<NestShell> {
           now: now,
           use24Hour: _c.use24Hour,
           showSeconds: _c.showSeconds,
-          animateWeather: widget.animateDecorations,
-          albumTitle: _c.albumTitle,
-        );
+            animateWeather: widget.animateDecorations,
+            forceLightText: true,
+            albumTitle: _c.albumTitle,
+          ),
+        ]);
       case ShellPage.digest:
         return _DigestPage(
           metrics: _m,

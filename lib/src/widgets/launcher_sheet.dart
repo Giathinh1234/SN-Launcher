@@ -69,21 +69,28 @@ class LauncherSheet extends StatelessWidget {
     // and it keeps the closed state costing literally nothing to composite.
     final lift = (1 - progress.clamp(0.0, 1.0)) * sheetH;
 
-    return IgnorePointer(
-      ignoring: progress < 0.02,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: SizedBox(
-          height: sheetH,
-          width: metrics.size.width,
-          child: Transform.translate(
-            offset: Offset(0, lift),
-            // The sheet's contents rasterise once into their own layer and are
-            // then only blitted. Without this the badge row, the divider and
-            // the seven quick-setting glyphs all re-rasterise on every frame of
-            // the drag, which is what tipped the animation over the 60 Hz frame
-            // budget on a UNISOC T610.
-            child: RepaintBoundary(
+    // `Positioned`, not `Align`.
+    //
+    // `Align` is a RenderPositionedBox, whose `hitTestSelf` returns true and
+    // which fills its parent — so an open sheet swallowed *every* pointer event
+    // on the whole screen. That is why the sheet could not be dragged back
+    // down, and why the carousel behind it went dead. Constraining the sheet to
+    // the bottom band leaves the rest of the screen hit-testable.
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: sheetH,
+      child: IgnorePointer(
+        ignoring: progress < 0.02,
+        child: Transform.translate(
+          offset: Offset(0, lift),
+          // The sheet's contents rasterise once into their own layer and are
+          // then only blitted. Without this the badge row, the divider and
+          // the seven quick-setting glyphs all re-rasterise on every frame of
+          // the drag, which is what tipped the animation over the 60 Hz frame
+          // budget on a UNISOC T610.
+          child: RepaintBoundary(
               child: ClipRRect(
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(metrics.px(28)),
@@ -189,7 +196,6 @@ class LauncherSheet extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
               ),
             ),
           ),

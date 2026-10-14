@@ -186,39 +186,69 @@ class ShellController extends ChangeNotifier {
   }
 
   // ── Bottom sheet gesture ─────────────────────────────────────────────────
-  /// Sheets follow the finger 1:1 while dragging.
-  void onSheetDragUpdate(double dyFromStart, double screenHeight) {
-    if (!_draggingSheet) {
-      _draggingSheet = true;
-      _dragStart = _sheetAnim.value;
-    }
-    _sheetAnim.value = (_dragStart - dyFromStart / screenHeight).clamp(0.0, 1.0);
+  /// Where the sheet settles when released: anything above this stays open.
+  static const double sheetOpenThreshold = 0.45;
+
+  /// Velocity (px/s, positive = downward) past which a fling wins over
+  /// position, in either direction.
+  static const double sheetFlingVelocity = 600;
+
+  /// How much of a full sheet-height of travel a single frame of fling is
+  /// projected to carry the sheet.
+  static const double _flingProjection = 0.25;
+
+  /// Begin a drag from a known starting [progress].
+  ///
+  /// Explicit rather than inferred lazily on the first move: inferring it let
+  /// the widget layer and this layer disagree about whether a drag was
+  /// happening, which froze the sheet mid-drag.
+  void onSheetDragStart(double progress) {
+    _draggingSheet = true;
+    _dragStart = progress;
   }
 
-  /// Release snaps to open or closed, optionally dragged further to reach the
-  /// full app grid (which is a second detent, exactly like the real device).
-  void onSheetDragEnd(double velocity, double screenHeight, {required bool isDiscover}) {
+  /// [dyFromStart] is finger travel since the drag began; [travelHeight] is the
+  /// distance the sheet covers going 0 → 1, i.e. its own height — **not** the
+  /// screen height.
+  ///
+  /// Dividing by the screen height made the sheet track the finger at half
+  /// speed, which is the "it appears slowly" half of the report.
+  void onSheetDragUpdate(double dyFromStart, double travelHeight) {
+    if (!_draggingSheet) return;
+    _sheetAnim.value =
+        (_dragStart - dyFromStart / math.max(1.0, travelHeight)).clamp(0.0, 1.0);
+  }
+
+  /// Release settles the sheet. Called on pointer-up *and* pointer-cancel —
+  /// Android claims bottom-edge drags for its own gesture, so a cancel is the
+  /// normal way a drag ends here.
+  void onSheetDragEnd(double velocity, double travelHeight, {required bool isDiscover}) {
     _draggingSheet = false;
-    final projected = _sheetAnim.value - velocity / math.max(1.0, screenHeight) * 0.5;
-    const openThreshold = 0.45;
-    bool shouldOpen;
-    if (velocity < -600) {
-      shouldOpen = true;
-    } else if (velocity > 600) {
-      shouldOpen = false;
+    final travel = math.max(1.0, travelHeight);
+    final projected =
+        (_sheetAnim.value - velocity / travel * _flingProjection).clamp(0.0, 1.0);
+
+    final bool shouldOpen;
+    if (velocity < -sheetFlingVelocity) {
+      shouldOpen = true; // flung upward
+    } else if (velocity > sheetFlingVelocity) {
+      shouldOpen = false; // flung downward
     } else {
-      shouldOpen = projected > openThreshold;
+      shouldOpen = projected > sheetOpenThreshold;
     }
+
     if (shouldOpen) {
       goToPage(isDiscover ? ShellPage.discover : _page, duration: kNestFast);
       _sheetAnim.animateTo(1, duration: kNestMedium, curve: kNestDecelerate);
     } else {
       _sheetAnim.animateTo(0, duration: kNestMedium, curve: kNestAccelerate);
+      // Match closeSheet(): leaving the drawer also returns to the first page.
+      if (_page == ShellPage.discover) goToPage(ShellPage.home);
     }
   }
 
   void toggleSheet() {
-    if (_sheetAnim.value > 0.5) {
+    if (_sheetAnim.value > sheetOpenThreshold) {
       _sheetAnim.animateBack(0, duration: kNestMedium, curve: kNestAccelerate);
     } else {
       _sheetAnim.animateTo(1, duration: kNestMedium, curve: kNestDecelerate);
