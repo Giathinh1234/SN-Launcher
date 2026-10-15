@@ -48,6 +48,24 @@ class SheetState {
 /// Assistant listening state, mirroring the device's 4-dot animation.
 enum AssistantState { idle, listening, processing, speaking, error }
 
+/// Tap-to-talk is **off**.
+///
+/// It was never more than a mock: the four-dot mark played a loop while a
+/// caption said "Listening…" with no microphone attached, then "Thinking…"
+/// with nothing to think about, then timed itself back to idle. It read as a
+/// broken feature rather than an absent one.
+///
+/// The animation was worse. `_OrbPainter` ran `..repeat()` unconditionally —
+/// it ignored `animateDecorations` entirely, which is why the screenshot tests
+/// could not get a stable frame of it. Each dot scaled to 1.45x and lerped
+/// from a muddy grey-blue up to its brand colour, so the mark was visibly four
+/// different sizes and two of them looked brown. Google's own dot mark is four
+/// equal circles in a 2x2 diamond; none of that survived.
+///
+/// See `docs/DEFERRED.md` for what a real implementation would need.
+/// Flip this to true to bring the mock back.
+const bool kAssistantEnabled = false;
+
 /// Global shell state: page carousel, bottom sheet, assistant, brightness,
 /// volume and DND. Everything the gesture recogniser touches lives here so the
 /// widget tree can stay declarative and cheap.
@@ -492,6 +510,12 @@ class ShellController extends ChangeNotifier {
   /// page would report "follows the time of day" while rendering a pinned
   /// palette — a caption that contradicts what is on screen. Screenshots have
   /// already caught that once; keep the two in step.
+  /// Drives the Assistant overlay for a screenshot.
+  void setAssistantForTest(AssistantState s) {
+    _assistant = s;
+    notifyListeners();
+  }
+
   void setThemeForTest(NestTheme t) {
     _theme = t;
     _palette = AmbientPalette.of(t);

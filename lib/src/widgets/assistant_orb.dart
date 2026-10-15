@@ -30,9 +30,22 @@ class AssistantOrb extends StatefulWidget {
 
 class _AssistantOrbState extends State<AssistantOrb>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))
-        ..repeat();
+  /// Does not repeat while [kAssistantEnabled] is false.
+  ///
+  /// The previous version called `..repeat()` unconditionally, so the mark was
+  /// always mid-animation — there was no static frame to screenshot and no way
+  /// to render it honestly in a test. See [kAssistantEnabled] and
+  /// `docs/DEFERRED.md`.
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (kAssistantEnabled) _c.repeat();
+  }
 
   /// Google's published Assistant brand colours, in dot order.
   static const List<Color> kBrandColors = [
@@ -128,17 +141,23 @@ class _OrbPainter extends CustomPainter {
       var offset = baseOffsets[i];
       var color = idleColor;
 
-      if (active) {
+      // Static frame while the feature is off: four equal dots in their brand
+      // colours, no size swing. The animated path below scales each dot to
+      // 1.45x and lerps its colour from grey-blue to brand, which is what made
+      // the mark look like four different shapes and two of them look brown.
+      if (active && kAssistantEnabled) {
         color = Color.lerp(idleColor, _brandColors[i], 0.25 + 0.75 * (wave + 1) / 2)!;
         scale = 1.0 + 0.45 * (wave + 1) / 2;
       }
-      if (processing) {
+      if (processing && kAssistantEnabled) {
         // Processing spins the dots around the centre, like the device's
         // "thinking" state.
         final angle = phase * math.pi * 2 + i * math.pi / 2;
         offset = Offset(math.cos(angle), math.sin(angle));
         color = _brandColors[i];
         scale = 1.0;
+      } else if (active) {
+        color = _brandColors[i];
       }
 
       final pos = Offset(

@@ -158,10 +158,13 @@ class _NestShellState extends State<NestShell> {
               _c.onHorizontalDragEnd(320, 0, _m.size.width);
             case LogicalKeyboardKey.escape:
               _c.closeSheet();
-              _c.stopListening();
             case LogicalKeyboardKey.space:
             case LogicalKeyboardKey.enter:
-              _c.assistant == AssistantState.idle ? _c.beginListening() : _c.stopListening();
+              if (kAssistantEnabled) {
+                _c.assistant == AssistantState.idle
+                    ? _c.beginListening()
+                    : _c.stopListening();
+              }
             default:
               return KeyEventResult.ignored;
           }
@@ -215,7 +218,12 @@ class _NestShellState extends State<NestShell> {
               },
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _c.assistant == AssistantState.idle ? _c.beginListening : _c.stopListening,
+                // Tap-to-talk is off. See [kAssistantEnabled] / docs/DEFERRED.md.
+                onTap: kAssistantEnabled
+                    ? (_c.assistant == AssistantState.idle
+                        ? _c.beginListening
+                        : _c.stopListening)
+                    : null,
                 onHorizontalDragEnd: (d) =>
                     _c.onHorizontalDragEnd(d.primaryVelocity ?? 0, 0, _m.size.width),
                 child: SizedBox.expand(
@@ -307,7 +315,7 @@ class _NestShellState extends State<NestShell> {
                           ),
 
                         // ── Assistant ───────────────────────────────────────
-                        if (_c.assistant != AssistantState.idle)
+                        if (kAssistantEnabled && _c.assistant != AssistantState.idle)
                           _AssistantOverlay(
                             state: _c.assistant,
                             palette: palette,

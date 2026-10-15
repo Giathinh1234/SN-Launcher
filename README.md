@@ -159,7 +159,7 @@ args keeps the build and the app inside a small memory envelope. `minSdk` is
 | --- | --- |
 | Touch | Swipe up from the bottom to open the launcher, past the detent for the full grid; swipe left/right for the page carousel; tap the centre to talk |
 | Keyboard / D-pad / Android TV remote | Arrow up opens, down closes, left/right move pages, Esc backs out, Space toggles listening |
-| Microphone | `ShellController.beginListening()` drives the four-dot Assistant animation; wake word + STT is the next milestone |
+| Microphone | **Off.** Tap-to-talk and its four-dot orb are disabled — the orb claimed "Listening…" with no microphone attached, and its animation was visibly broken. See [docs/DEFERRED.md](docs/DEFERRED.md) |
 | MCP / remote | The whole shell is driven through `ShellController`, so a remote or MCP bridge only needs to call its public verbs |
 
 ---
@@ -415,6 +415,20 @@ nestlaunch --size=1024x600    # force an exact panel size
 ---
 
 ## Deliberately deferred
+
+Four things, written up in full in [`docs/DEFERRED.md`](docs/DEFERRED.md):
+
+1. **Tap-to-talk / Assistant orb** — disabled via `kAssistantEnabled`. Was a
+   mock that claimed to listen while doing nothing, and whose animation scaled
+   each of the four dots to 1.45x and lerped Google's yellow through olive.
+2. **MCP / remote control** — `ShellController` already exposes every verb, so
+   the bridge is small; the transport and auth model are the real work.
+3. **Ambient light sensor** — `adaptToAmbientLight()` works but nothing feeds it.
+   Most target hardware has no light sensor, and faking it would be worse.
+4. **Weather location** — build-time `--dart-define` only. The store is already
+   there; the missing part is a UI and a decision about first acquisition.
+
+### Detail on the deferred list
 
 ### MCP / remote control — put down for now
 
