@@ -262,6 +262,44 @@ probe and `render_shell_test.dart` load the font explicitly for that reason.
 
 ---
 
+## The photo frame rotates
+
+The background changes every 10 minutes. Controls are on the digest page:
+**Rotate** on/off, **Next now**, and 5 / 10 / 30 / 60 min / 6h.
+
+Four constraints shaped it, all from the hardware it has to survive:
+
+* **The bundled photograph paints at launch.** Anything downloaded is a later
+  upgrade, so cold start never waits on the network and stays at 0.8s.
+* **`FileImage`, not `MemoryImage(File.readAsBytesSync())`.** Reading the file
+  inside `build()` defeats the image cache and costs a full JPEG decode per
+  frame on a UNISOC.
+* **The API is asked for a 1600px thumbnail**, which is already the right size.
+  Re-encoding would only convert a 300 KB JPEG into a 2 MB PNG — `dart:ui` has
+  no JPEG encoder.
+* **Plain `dart:io` HttpClient.** One less dependency on a 1 GB tablet.
+
+### The pool is verified, not remembered
+
+The first version hand-wrote twelve Wikimedia Commons filenames from memory.
+**Four of them resolved.** Five were 404 and one was CC BY-SA — share-alike,
+which a launcher may not install — so the rotation would have silently skipped
+most of its own pool, every cycle, forever.
+
+It was rebuilt properly: search Commons, keep only PD / CC0 / CC-BY with no
+SA/NC/ND, download the candidates, and **look at all thirty**. Rejected a
+satellite map with baked-in labels, two paintings, one carrying a visible gallery
+watermark, one containing people, and the washed-out and over-saturated strays.
+
+`tool/verify_photo_pool.py` confirms every entry still resolves and is still
+licence-clean against the live API. It exits non-zero, so it belongs in CI.
+
+This is a deliberate choice over "fetch something random". A photo frame on a
+wall is looked at constantly; a random image search will eventually put a
+portrait, a chart, or a screenshot of someone's desktop on it.
+
+---
+
 ## Calendar, weather and the photograph
 
 **Calendar** reads `CalendarContract.Instances` through the platform channel,

@@ -43,6 +43,37 @@ const Set<String> _allowedLicenceFragments = {
   'cc by',
 };
 
+/// May we install a photograph carrying this licence?
+///
+/// Fails closed: anything not explicitly allowed is refused.
+///
+/// Exported rather than private so it can be unit tested — this is the one
+/// piece of logic where a bug means quietly putting unlawfully-redistributable
+/// work onto a user's device, and it is the kind of thing that is never
+/// exercised by hand.
+///
+/// Share-alike is the trap. "CC BY-SA 4.0" also contains "cc by", so a naive
+/// allow-list test passes it. Commons additionally writes the bare form
+/// "CC BY 4.0 SA" with no hyphen at all, which a substring check for "-sa"
+/// misses — a real licence string from the actual API, found by this test.
+bool licenceAllowsRedistribution(String licence) {
+  final low = licence.toLowerCase().trim();
+  if (low.isEmpty) return false;
+
+  // Share-alike: a launcher cannot honour the viral-licensing obligation, so
+  // these are refused outright.
+  if (RegExp(r'share[\s_-]?alike|\bsharealike\b|-sa\b|\bsa\s*\d|\bsa\b')
+      .hasMatch(low)) {
+    return false;
+  }
+  // Non-commercial and no-derivatives.
+  if (RegExp(r'-nc\b|non[\s-]?commercial').hasMatch(low)) return false;
+  if (RegExp(r'-nd\b|noderiv|no[\s-]?derivative').hasMatch(low)) return false;
+  if (low.contains('fair use') || low.contains('non-free')) return false;
+
+  return _allowedLicenceFragments.any(low.contains);
+}
+
 /// Downloads and rotates the photo-frame background.
 ///
 /// Design constraints, all from the e-waste hardware this targets:
@@ -307,7 +338,7 @@ class PhotoFrameService extends ChangeNotifier {
     try {
       final meta = await _api(client, src.title, src.author);
       if (meta == null) return null;
-      if (!_licenceIsAllowed(meta.license ?? '')) {
+      if (!licenceAllowsRedistribution(meta.license ?? '')) {
         debugPrint(
           'PhotoFrameService: refusing "${src.title}" — licence is '
           '"${meta.license}"',
@@ -327,34 +358,6 @@ class PhotoFrameService extends ChangeNotifier {
     } finally {
       client.close(force: true);
     }
-  }
-
-  /// Fails closed: anything not explicitly on the allow-list is refused.
-  ///
-  /// Substring matching is only safe for the allow-list, where the fragments
-  /// are specific enough. The forbidden list is a belt-and-braces check for the
-  /// common share-alike spellings, because "cc by-sa 4.0" also contains "cc by"
-  /// and would otherwise sail through.
-  static bool _licenceIsAllowed(String licence) {
-    final low = licence.toLowerCase().trim();
-    if (low.isEmpty) return false;
-
-    const shareAlike = ['-sa', 'sa 4.0', 'sa 3.0', 'sa 2.0', 'sa 2.5',
-      'sharealike', 'share alike', 'share-alike'];
-    for (final sa in shareAlike) {
-      if (low.contains(sa)) return false;
-    }
-    if (low.contains('-nc') || low.contains('noncommercial') ||
-        low.contains('non-commercial')) {
-      return false;
-    }
-    if (low.contains('-nd') || low.contains('noderiv') ||
-        low.contains('no derivative')) {
-      return false;
-    }
-    if (low.contains('fair use') || low.contains('non-free')) return false;
-
-    return _allowedLicenceFragments.any(low.contains);
   }
 
   Future<PhotoCredit?> _api(
