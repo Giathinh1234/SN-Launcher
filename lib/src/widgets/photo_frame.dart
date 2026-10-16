@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../theme/ambient_palette.dart';
@@ -21,11 +23,18 @@ class PhotoFrameBackground extends StatelessWidget {
     required this.metrics,
     required this.palette,
     this.asset = 'assets/photo/landscape.jpg',
+    this.file,
   });
 
   final NestMetrics metrics;
   final AmbientPalette palette;
+
+  /// Fallback, used at launch and whenever rotation has nothing to show.
   final String asset;
+
+  /// A downloaded photograph, when rotation has one. Takes precedence over
+  /// [asset] so the swap is a local file read and cannot flicker.
+  final File? file;
 
   @override
   Widget build(BuildContext context) {
@@ -40,13 +49,18 @@ class PhotoFrameBackground extends StatelessWidget {
             // `metrics.size` is already in logical px; multiplying by
             // `metrics.u` as well double-counts the design scale and
             // over-allocates by that factor. And `allowUpscaling: false` stops
-            // it going further: this asset is 1600px wide on a 2000px panel,
+            // it going further: these photos are 1600px wide on a 2000px panel,
             // so decoding at 2000 would spend ~3 MB of extra bitmap on detail
             // that does not exist. `ResizeImage` knows the intrinsic size, so
             // letting it clamp is more robust than hardcoding the dimensions —
-            // swap the photo for a 4K one and it still does the right thing.
+            // swap in a 4K photo and it still does the right thing.
             image: ResizeImage(
-              AssetImage(asset),
+              // FileImage, not MemoryImage(File.readAsBytesSync()).
+              // Reading the file inside build() would re-read it and defeat
+              // the image cache on every rebuild — a full JPEG decode per
+              // frame on a UNISOC. FileImage keys the cache on the path and
+              // scale, so the same photograph decodes once.
+              file != null ? FileImage(file!) : AssetImage(asset),
               width: (metrics.size.width * MediaQuery.devicePixelRatioOf(context))
                   .round()
                   .clamp(640, 4096),

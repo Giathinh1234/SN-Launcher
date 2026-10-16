@@ -21,6 +21,7 @@ class PhotoCredit {
     this.license,
     this.licenseUrl,
     this.sourceUrl,
+    this.imageUrl,
   });
 
   final String? title;
@@ -28,6 +29,10 @@ class PhotoCredit {
   final String? license;
   final String? licenseUrl;
   final String? sourceUrl;
+
+  /// Where to fetch the full-size image. Null for the bundled photograph, which
+  /// is already in the APK.
+  final String? imageUrl;
 
   static const PhotoCredit empty = PhotoCredit();
 

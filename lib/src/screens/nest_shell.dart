@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 
 import '../models/nest_action.dart';
+import '../services/photo_frame_service.dart';
 import '../models/photo_credit.dart';
 import '../services/calendar_service.dart';
 import '../services/clock_service.dart';
@@ -14,7 +15,6 @@ import '../theme/nest_theme.dart';
 import '../theme/nest_type.dart';
 import '../widgets/ambient_background.dart';
 import '../widgets/app_drawer.dart';
-import '../widgets/assistant_orb.dart';
 import '../widgets/clock_block.dart';
 import '../widgets/launcher_sheet.dart';
 import '../widgets/photo_frame.dart';
@@ -26,7 +26,6 @@ import '../widgets/photo_frame.dart';
 ///   1  page carousel  — photo frame · digest · home control · discover
 ///   2  bottom sheet   — app row + quick settings + drag handle
 ///   3  app drawer     — the six-column "See all" grid
-///   4  assistant overlay
 ///   5  toast
 ///
 /// Gestures follow the device:
@@ -34,7 +33,6 @@ import '../widgets/photo_frame.dart';
 ///   * swipe up past the detent ... open the full app drawer
 ///   * swipe down ................. close
 ///   * swipe left / right ......... move through the page carousel
-///   * tap centre ................. begin listening
 ///   * three-finger up/down ....... open / close quick settings
 class NestShell extends StatefulWidget {
   const NestShell({
@@ -43,6 +41,7 @@ class NestShell extends StatefulWidget {
     required this.clock,
     required this.weather,
     this.calendar,
+    this.photos,
     this.suggested,
     this.actions,
     this.animateDecorations = true,
@@ -56,14 +55,18 @@ class NestShell extends StatefulWidget {
   /// instead of "No more events today".
   final CalendarService? calendar;
 
+  /// Optional. Absent in tests and on desktop, where the background stays on
+  /// the bundled photograph.
+  final PhotoFrameService? photos;
+
   /// Overrides the six badges in the sheet's app row.
   final List<NestAction>? suggested;
 
   /// Overrides the drawer contents.
   final List<NestAction>? actions;
 
-  /// When false, every continuously-animating decoration (weather glyph,
-  /// Assistant orb) renders a single static frame. Required for screenshot /
+  /// When false, every continuously-animating decoration (the weather glyph)
+  /// renders a single static frame. Required for screenshot /
   /// golden tests, which cannot settle against an infinite animation.
   final bool animateDecorations;
 
@@ -72,6 +75,33 @@ class NestShell extends StatefulWidget {
 }
 
 class _NestShellState extends State<NestShell> {
+  /// Rotation is a separate ChangeNotifier; fold it into the rebuild set so a
+  /// new photograph actually reaches the screen.
+  @override
+  void initState() {
+    super.initState();
+    widget.photos?.addListener(_onPhotosChanged);
+  }
+
+  @override
+  void didUpdateWidget(NestShell old) {
+    super.didUpdateWidget(old);
+    if (old.photos != widget.photos) {
+      old.photos?.removeListener(_onPhotosChanged);
+      widget.photos?.addListener(_onPhotosChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.photos?.removeListener(_onPhotosChanged);
+    super.dispose();
+  }
+
+  void _onPhotosChanged() {
+    if (mounted) setState(() {});
+  }
+
   /// Recomputed every frame, deliberately *not* `late final`.
   ///
   /// The first frame on a real device reports a MediaQuery size that is smaller
@@ -160,11 +190,7 @@ class _NestShellState extends State<NestShell> {
               _c.closeSheet();
             case LogicalKeyboardKey.space:
             case LogicalKeyboardKey.enter:
-              if (kAssistantEnabled) {
-                _c.assistant == AssistantState.idle
-                    ? _c.beginListening()
-                    : _c.stopListening();
-              }
+              break;
             default:
               return KeyEventResult.ignored;
           }
@@ -218,12 +244,6 @@ class _NestShellState extends State<NestShell> {
               },
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                // Tap-to-talk is off. See [kAssistantEnabled] / docs/DEFERRED.md.
-                onTap: kAssistantEnabled
-                    ? (_c.assistant == AssistantState.idle
-                        ? _c.beginListening
-                        : _c.stopListening)
-                    : null,
                 onHorizontalDragEnd: (d) =>
                     _c.onHorizontalDragEnd(d.primaryVelocity ?? 0, 0, _m.size.width),
                 child: SizedBox.expand(
@@ -314,14 +334,6 @@ class _NestShellState extends State<NestShell> {
                             ),
                           ),
 
-                        // ── Assistant ───────────────────────────────────────
-                        if (kAssistantEnabled && _c.assistant != AssistantState.idle)
-                          _AssistantOverlay(
-                            state: _c.assistant,
-                            palette: palette,
-                            size: _m.px(160),
-                          ),
-
                         // ── Toast ──────────────────────────────────────────
                         if (_c.toast != null)
                           _Toast(text: _c.toast!, palette: palette, metrics: _m),
@@ -368,7 +380,11 @@ class _NestShellState extends State<NestShell> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            PhotoFrameBackground(metrics: _m, palette: palette),
+            PhotoFrameBackground(
+              metrics: _m,
+              palette: palette,
+              file: widget.photos?.currentFile,
+            ),
             // Over a photograph the clock is always white, like the device — the
             // scrim in PhotoFrameBackground is what keeps it legible.
             ClockBlock(
@@ -382,7 +398,7 @@ class _NestShellState extends State<NestShell> {
               animateWeather: widget.animateDecorations,
               forceLightText: true,
               albumTitle: _c.albumTitle,
-              photoCredit: _credit.displayCredit,
+              photoCredit: (widget.photos?.credit ?? _credit).displayCredit,
             ),
           ],
         );
@@ -398,6 +414,7 @@ class _NestShellState extends State<NestShell> {
           calendar: widget.calendar,
           theme: _c.theme,
           onThemePick: _c.setTheme,
+          photos: widget.photos,
         );
       case ShellPage.homeControl:
         return _HomeControlPage(metrics: _m, type: type, palette: palette);
@@ -508,6 +525,7 @@ class _DigestPage extends StatelessWidget {
     required this.calendar,
     required this.theme,
     required this.onThemePick,
+    this.photos,
   });
 
   final NestMetrics metrics;
@@ -520,6 +538,9 @@ class _DigestPage extends StatelessWidget {
   final CalendarService? calendar;
   final NestTheme theme;
   final void Function(NestTheme) onThemePick;
+
+  /// Rotation controls. Null when the service is not running.
+  final PhotoFrameService? photos;
 
   /// The calendar column, as real content.
   ///
@@ -598,6 +619,85 @@ class _DigestPage extends StatelessWidget {
     );
   }
 
+  /// Rotation controls. Returns null when rotation is not available, so the
+  /// caller can drop the column instead of showing a dead card.
+  Widget? _photosCard(NestMetrics m) {
+    final svc = photos;
+    if (svc == null) return null;
+    return _Card(
+      title: 'Background',
+      metrics: m,
+      palette: palette,
+      type: type,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  svc.enabled
+                      ? 'Changes every ${svc.interval.inMinutes} min'
+                      : 'Fixed',
+                  style: type.caption(color: palette.onSurfaceStrong),
+                ),
+              ),
+              if (svc.busy)
+                SizedBox(
+                  width: m.px(14),
+                  height: m.px(14),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: palette.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: m.px(8)),
+          Row(
+            children: [
+              _Toggle(
+                label: 'Rotate',
+                on: svc.enabled,
+                metrics: m,
+                type: type,
+                palette: palette,
+                onTap: () => svc.setEnabled(!svc.enabled),
+              ),
+              SizedBox(width: m.px(8)),
+              _Toggle(
+                label: 'Next now',
+                on: false,
+                metrics: m,
+                type: type,
+                palette: palette,
+                onTap: svc.busy ? null : svc.next,
+              ),
+            ],
+          ),
+          SizedBox(height: m.px(8)),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final mins in const [5, 10, 30, 60, 360])
+                _Toggle(
+                  label: mins >= 60 ? '${mins ~/ 60}h' : '${mins}m',
+                  on: svc.enabled && svc.interval.inMinutes == mins,
+                  compact: true,
+                  metrics: m,
+                  type: type,
+                  palette: palette,
+                  onTap: () => svc.setIntervalMinutes(mins),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   String _clockTime(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
@@ -630,6 +730,11 @@ class _DigestPage extends StatelessWidget {
                         : '${weather.condition.label} · '
                               '${weather.shortLabel}',
                   ),
+                ),
+                SizedBox(width: m.px(14)),
+                Expanded(
+                  flex: 2,
+                  child: _photosCard(m) ?? const SizedBox.shrink(),
                 ),
                 SizedBox(width: m.px(14)),
                 Expanded(
@@ -672,6 +777,56 @@ class _DigestPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A small pill used for the background controls.
+///
+/// Mirrors [ThemeSwatch]'s shape so the digest page reads as one control
+/// language rather than two.
+class _Toggle extends StatelessWidget {
+  const _Toggle({
+    required this.label,
+    required this.on,
+    required this.metrics,
+    required this.type,
+    required this.palette,
+    required this.onTap,
+    this.compact = false,
+  });
+
+  final String label;
+  final bool on;
+  final NestMetrics metrics;
+  final NestType type;
+  final AmbientPalette palette;
+  final VoidCallback? onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = metrics;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: m.px(compact ? 9 : 12),
+          vertical: m.px(compact ? 4 : 6),
+        ),
+        decoration: BoxDecoration(
+          color: on
+              ? const Color(0xFF4285F4)
+              : palette.onSurfaceVariant.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(m.px(compact ? 8 : 10)),
+        ),
+        child: Text(
+          label,
+          style: type.caption(
+            color: on ? Colors.white : palette.onSurfaceStrong,
+          ),
+        ),
       ),
     );
   }
@@ -825,30 +980,6 @@ class _HomeControlPage extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AssistantOverlay extends StatelessWidget {
-  const _AssistantOverlay({required this.state, required this.palette, required this.size});
-
-  final AssistantState state;
-  final AmbientPalette palette;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = switch (state) {
-      AssistantState.listening => 'Listening…',
-      AssistantState.processing => 'Thinking…',
-      AssistantState.speaking => 'Speaking…',
-      AssistantState.error => 'Sorry, I missed that',
-      AssistantState.idle => null,
-    };
-    return IgnorePointer(
-      child: Center(
-        child: AssistantOrb(state: state, size: size, color: palette.onSurface, label: label),
       ),
     );
   }

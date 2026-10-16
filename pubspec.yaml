@@ -13,6 +13,10 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   url_launcher: ^6.3.1
+  # In-app music player, per the user's request for "music from an adblock
+  # capable browser". Only constructed when the music page opens — see
+  # lib/src/widgets/music_player.dart and docs/MUSIC.md for the trade-offs.
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:

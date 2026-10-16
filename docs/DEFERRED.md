@@ -4,61 +4,39 @@ Things that were built and then deliberately turned off, or not built at all.
 Kept here so a future session picks them up instead of rediscovering the
 reasoning.
 
-Read this before touching `kAssistantEnabled`.
+Item 1 is the reason this file exists: the listening feature was **deleted**, not
+flagged off, because it lied to the user about what the device could do.
 
 ---
 
-## 1. Tap-to-talk / the Assistant orb — DISABLED
+## 1. Tap-to-talk / listening — REMOVED, not deferred
 
-**Status:** off. `const bool kAssistantEnabled = false` in
-`lib/src/state/shell_controller.dart`. Flip it to `true` to bring the mock back.
+**Status: the code is gone.** Not flagged off — deleted. `AssistantState`,
+`kAssistantEnabled`, `beginListening`/`stopListening`, `assistant_orb.dart` and
+the overlay are all removed. Nothing is left to switch back on by accident.
 
-**What it did when on:** tapping anywhere on the home screen (or pressing
-Space/Enter on a remote) started a four-dot orb that played a looping
-"breathing" animation, captioned **"Listening…"**, which after a beat became
-**"Thinking…"**, then timed itself back to idle on its own.
+The user asked for it to be removed outright rather than parked, so this entry
+exists only to record *why*, in case it is ever rebuilt.
 
-**Why it is off — two separate reasons.**
+It was removed for two reasons, both confirmed by rendering it and looking:
 
-*It was a lie.* There is no microphone. No audio is captured, nothing is
-transcribed, no request goes anywhere. The caption said "Listening…" and then
-"Thinking…" while the device did absolutely nothing in between. A user who
-tapped it was told the launcher understood them. That is worse than the feature
-being absent, because it destroys trust in every other status message on the
-device — if "Listening…" is fake, is the weather fake?
+1. **It claimed capability it did not have.** Tapping the screen played a
+   looping four-dot mark captioned "Listening…", which became "Thinking…", then
+   timed itself back to idle. No microphone was attached, no audio was
+   captured, and nothing was transcribed. A user who tapped it was told the
+   launcher understood them.
 
-*The animation was visibly broken.* `_OrbPainter` did **not** respect
-`animateDecorations`. Its `AnimationController` called `..repeat()` in its field
-initialiser, unconditionally, so there was no static frame to ever capture. Two
-concrete consequences:
+2. **The animation was visibly broken.** `AnimationController.repeat()` was
+   called in a field initialiser, so it ignored `animateDecorations` entirely —
+   there was no static frame to ever capture, which is why the unit tests passed
+   throughout and nobody noticed. Each of the four dots scaled to 1.45x on its
+   own phase, so they were four different sizes at any instant, and each lerped
+   from a muddy grey-blue to its brand colour. Caught mid-lerp, Google's yellow
+   `#FBBC04` rendered as dark olive. The mark read as a mistake, not a logo.
 
-- Each dot scaled up to **1.45x** on its own phase offset, so at any instant the
-  four dots were four visibly different sizes.
-- Each dot's colour lerped from a **muddy grey-blue** (`idleColor`, the palette
-  ink at 55% alpha) up to its brand colour. Caught mid-lerp, Google's yellow
-  `#FBBC04` rendered as dark olive and its green `#34A853` as dark forest. The
-  mark looked like a mistake rather than a logo.
-
-This was only found by rendering it and *looking* — see
-`build/shots/assistant_1024x600.png` in the commit that disabled it. The unit
-tests passed the whole time.
-
-**What a real implementation needs, in order:**
-
-1. `RECORD_AUDIO` permission and a runtime request, with a real refusal path.
-2. An actual capture path. Android: `SpeechRecognizer` or a `MediaRecorder`
-   push-to-talk button. Both need a user gesture; neither works hands-off.
-3. A wake word. `SpeechRecognizer` can do hotword recognition on some devices,
-   but not reliably, and not at all on the low-end hardware this project
-   targets. On a 1 GB tablet a continuous hotword loop is likely to cost more
-   battery than the whole rest of the app.
-4. A transport. On-device intent fulfilment needs a local model or a backend
-   call; on a LAN-only smart display, neither is free.
-5. An honest failure surface. If it cannot hear you it must say so, not animate.
-
-**Point 5 is the real lesson.** The feature failed not because it was hard but
-because it was allowed to *claim* capability it did not have. Whatever replaces
-it should never reach a state where the UI asserts something that is not true.
+The lesson, worth keeping: this failed not because speech is hard but because
+the UI was permitted to assert something untrue. Whatever replaces it must not
+be able to reach a "listening" state without a real microphone behind it.
 
 ---
 

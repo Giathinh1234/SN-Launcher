@@ -102,4 +102,6 @@ abstract final class SettingKeys {
   static const latitude = 'latitude';
   static const longitude = 'longitude';
   static const placeName = 'placeName';
+  static const rotatePhotos = 'rotatePhotos';
+  static const rotateMinutes = 'rotateMinutes';
 }

@@ -25,7 +25,6 @@ class _Harness extends StatefulWidget {
     required this.page,
     required this.out,
     this.theme,
-    this.assistant,
   });
 
   final Size size;
@@ -37,8 +36,6 @@ class _Harness extends StatefulWidget {
   /// Pin a theme instead of deriving one from [hour]. Null = dynamic.
   final NestTheme? theme;
 
-  /// Drive the Assistant overlay into a given state for capture.
-  final AssistantState? assistant;
 
   @override
   State<_Harness> createState() => _HarnessState();
@@ -63,9 +60,6 @@ class _HarnessState extends State<_Harness> with TickerProviderStateMixin {
     }
     _controller.setSheetForTest(widget.sheet);
     _controller.goToPage(widget.page);
-    if (widget.assistant != null) {
-      _controller.setAssistantForTest(widget.assistant!);
-    }
     _clock.overrideForTesting(DateTime(2022, 5, 26, 9, 45, 0));
   }
 
@@ -106,7 +100,7 @@ Future<void> _capture(
   _Harness harness,
 ) async {
   await tester.pumpWidget(harness);
-  // The weather glyph + Assistant orb are disabled here, so a couple of fixed
+  // The weather glyph is disabled here, so a couple of fixed
   // pumps are enough; pumpAndSettle is not usable against endless animations.
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
@@ -136,23 +130,6 @@ Future<void> _capture(
 void main() {
   setUpAll(_loadFonts);
 
-  testWidgets('assistant listening @ 1024x600', (tester) async {
-    tester.view
-      ..physicalSize = const Size(1024, 600)
-      ..devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await _capture(
-      tester,
-      const _Harness(
-        size: Size(1024, 600),
-        hour: 9.75,
-        sheet: 0,
-        page: ShellPage.home,
-        assistant: AssistantState.listening,
-        out: 'assistant_1024x600',
-      ),
-    );
-  });
 
   // One contact sheet of every pinned theme, so the set can be judged as a set
   // rather than one at a time. Dynamic is rendered at 20:30, where the sun is

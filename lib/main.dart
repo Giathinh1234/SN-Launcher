@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'src/models/nest_action.dart';
 import 'src/models/photo_credit.dart';
 import 'src/services/calendar_service.dart';
+import 'src/services/photo_frame_service.dart';
 import 'src/services/frame_stats.dart';
 import 'src/screens/nest_shell.dart';
 import 'src/services/clock_service.dart';
@@ -66,6 +67,7 @@ class _NestLauncherAppState extends State<NestLauncherApp>
   late final ClockService _clock = ClockService();
   late final WeatherService _weather = WeatherService();
   late final CalendarService _calendar = CalendarService();
+  late final PhotoFrameService _photos = PhotoFrameService();
   final FrameStats _frameStats = FrameStats();
   bool _weatherConfigured = false;
   ShellController? _controller;
@@ -80,6 +82,9 @@ class _NestLauncherAppState extends State<NestLauncherApp>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_controller?.restore());
       unawaited(_calendar.start());
+      // Never on the critical path: the bundled photograph is already on
+      // screen, and this only upgrades it later.
+      unawaited(_photos.start());
     });
   }
 
@@ -98,6 +103,7 @@ class _NestLauncherAppState extends State<NestLauncherApp>
     WidgetsBinding.instance.removeObserver(this);
     _controller?.dispose();
     _calendar.dispose();
+    _photos.dispose();
     _clock.dispose();
     _weather.dispose();
     _frameStats.dispose();
@@ -133,6 +139,7 @@ class _NestLauncherAppState extends State<NestLauncherApp>
               clock: _clock,
               weather: _weather,
               calendar: _calendar,
+              photos: _photos,
             ),
             if (FrameStats.enabled) PerfOverlay(stats: _frameStats),
           ],
