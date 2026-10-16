@@ -17,6 +17,7 @@ import '../widgets/ambient_background.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/clock_block.dart';
 import '../widgets/launcher_sheet.dart';
+import '../widgets/music_player.dart';
 import '../widgets/photo_frame.dart';
 
 /// The Nest launcher shell.
@@ -414,6 +415,7 @@ class _NestShellState extends State<NestShell> {
           calendar: widget.calendar,
           theme: _c.theme,
           onThemePick: _c.setTheme,
+          onOpenMusic: _openMusic,
           photos: widget.photos,
         );
       case ShellPage.homeControl:
@@ -433,6 +435,29 @@ class _NestShellState extends State<NestShell> {
   ///
   /// The rule applied here: never report an action that did not happen. If the
   /// platform refuses, say so in words that name the failure.
+  /// Pushes the in-app music player.
+  ///
+  /// The WebView is constructed only here, never at app start — building one
+  /// eagerly would add a WebView and its first page load to a cold start that
+  /// currently measures 0.8s on a UNISOC T610.
+  void _openMusic(String url, String title) {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.black.withValues(alpha: 0.88),
+        transitionDuration: const Duration(milliseconds: 260),
+        pageBuilder: (_, _, _) => MusicPlayer(
+          url: url,
+          title: title,
+          backgroundColor: const Color(0xFF121212),
+          foregroundColor: Colors.white,
+        ),
+        transitionsBuilder: (_, anim, _, child) =>
+            FadeTransition(opacity: anim, child: child),
+      ),
+    );
+  }
+
   Future<void> _handleQuickSetting(QuickSettingKind kind) async {
     final c = _c;
     switch (kind) {
@@ -525,6 +550,7 @@ class _DigestPage extends StatelessWidget {
     required this.calendar,
     required this.theme,
     required this.onThemePick,
+    required this.onOpenMusic,
     this.photos,
   });
 
@@ -539,6 +565,10 @@ class _DigestPage extends StatelessWidget {
   final NestTheme theme;
   final void Function(NestTheme) onThemePick;
 
+  /// Opens the in-app music player. Routed through the shell because that is
+  /// where `Navigator` lives, and because this page is stateless.
+  final void Function(String url, String title) onOpenMusic;
+
   /// Rotation controls. Null when the service is not running.
   final PhotoFrameService? photos;
 
@@ -552,7 +582,7 @@ class _DigestPage extends StatelessWidget {
     if (cal == null || !cal.available) {
       return _Card(
         title: 'Calendar',
-        body: 'Calendar permission not granted',
+        body: 'Permission needed',
         metrics: m,
         palette: palette,
         type: type,
@@ -618,6 +648,54 @@ class _DigestPage extends StatelessWidget {
       ),
     );
   }
+
+  /// Opens the in-app music player.
+  ///
+  /// The WebView is constructed only when this fires. Building it eagerly at
+  /// app start would add a WebView — and its first page load — to a cold start
+  /// that currently measures 0.8s on a UNISOC T610.
+  Widget _musicCard(NestMetrics m) => _Card(
+        title: 'Music',
+        metrics: m,
+        palette: palette,
+        type: type,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Wrap, not Row: the digest columns are narrow and two labelled
+            // pills side by side overflowed by 68px at 1280 wide.
+            Wrap(
+              spacing: m.px(8),
+              runSpacing: m.px(8),
+              children: [
+                _Toggle(
+                  label: 'YouTube',
+                  on: false,
+                  metrics: m,
+                  type: type,
+                  palette: palette,
+                  onTap: () => onOpenMusic('https://m.youtube.com/', 'YouTube'),
+                ),
+                SizedBox(width: m.px(8)),
+                _Toggle(
+                  label: 'Spotify',
+                  on: false,
+                  metrics: m,
+                  type: type,
+                  palette: palette,
+                  onTap: () => onOpenMusic('https://open.spotify.com/', 'Spotify'),
+                ),
+              ],
+            ),
+            SizedBox(height: m.px(8)),
+            Text(
+              'YouTube: blocked\nSpotify: not blocked',
+              style: type.caption(color: palette.onSurfaceVariant),
+            ),
+          ],
+        ),
+      );
 
   /// Rotation controls. Returns null when rotation is not available, so the
   /// caller can drop the column instead of showing a dead card.
@@ -730,6 +808,11 @@ class _DigestPage extends StatelessWidget {
                         : '${weather.condition.label} · '
                               '${weather.shortLabel}',
                   ),
+                ),
+                SizedBox(width: m.px(14)),
+                Expanded(
+                  flex: 2,
+                  child: _musicCard(m),
                 ),
                 SizedBox(width: m.px(14)),
                 Expanded(

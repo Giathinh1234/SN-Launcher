@@ -300,6 +300,32 @@ portrait, a chart, or a screenshot of someone's desktop on it.
 
 ---
 
+## Music
+
+The digest page opens YouTube or Spotify in an in-app WebView. **The WebView is
+constructed only when you tap one** — building one at app start would add a
+WebView and its first page load to a cold start that measures 0.8s.
+
+### Ad blocking: what it actually does
+
+Being straight about this, because "ad-block capable" oversells it:
+
+| Source | Ads blocked? | Why |
+| --- | --- | --- |
+| **YouTube** | **Yes** | Ads are separate DOM elements and media requests, so a URL filter plus a DOM scrubber removes them |
+| **Spotify** | **No, and it cannot be** | The ad break is inserted *server-side into the audio stream*. There is nothing on the client to filter. The web player also needs you to log in. |
+
+The filter is a host/path blocklist over `doubleclick.net`,
+`googlesyndication.com`, `adsystem.com`, `scorecardresearch.com`, `adnxs.com`,
+`crwdcntrl.net` and similar, plus injected JavaScript that removes ad
+containers and stubs `window.adsbygoogle`.
+
+This is **best-effort cosmetic filtering, not privacy**. It does not stop
+tracking beacons, does not survive a site redesign, and is not a substitute for
+uBlock Origin. See `docs/MUSIC.md`.
+
+---
+
 ## Calendar, weather and the photograph
 
 **Calendar** reads `CalendarContract.Instances` through the platform channel,
