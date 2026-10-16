@@ -54,7 +54,11 @@ family and the header says so.
   editing `kBlockedHostSuffixes`.
 - **Error swallowing is deliberate.** Subframe/subresource load failures and
   aborted requests (including the aborts our own blocking causes) are hidden;
-  only a main-frame failure shows the error card.
+  only a main-frame failure shows the error card. Because the WebView plugin
+  can drop error codes it does not recognise (DNS failure, connection
+  refused), a 45-second watchdog backstops any load that neither finishes nor
+  reports a clean error, so the spinner can never hang forever on a dead
+  network — worst case the error card appears a little late.
 
 ## Data / bandwidth
 

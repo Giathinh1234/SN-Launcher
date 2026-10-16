@@ -205,6 +205,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
     // must never surface as a page error.
     if (error.isForMainFrame == false) return;
 
+    _watchdog?.cancel();
     if (!mounted) return;
     setState(() {
       _failure = error.description.isEmpty
@@ -286,6 +287,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
                               _failure = null;
                               _progress = -1;
                             });
+                            _armWatchdog();
                             _controller!.reload();
                           },
                   ),
