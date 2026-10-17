@@ -12,6 +12,9 @@
     <!-- Let the assistant give a short haptic tick when it starts listening, so a
          wall display says something even when nobody is looking at it. -->
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Press-to-speak. Only ever held while the user is actively talking:
+         recognition is one-shot, never a background session. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <!-- Touchscreen, but not required to be a phone: Nest Hubs, Raspberry Pi
          panels, HDMI sticks and repurposed tablets all qualify. -->

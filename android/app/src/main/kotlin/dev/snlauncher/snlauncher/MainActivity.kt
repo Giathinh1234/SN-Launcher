@@ -18,6 +18,7 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     private lateinit var platformBridge: PlatformBridge
     private lateinit var settingsBridge: SettingsBridge
+    private lateinit var sttBridge: SpeechRecognizerBridge
     private lateinit var speechBridge: SpeechBridge
     private lateinit var lightSensorBridge: LightSensorBridge
 
@@ -37,6 +38,8 @@ class MainActivity : FlutterActivity() {
         // the persisted-settings surface change for different reasons and have
         // different lifetimes.
         settingsBridge = SettingsBridge(applicationContext).also { it.attach(flutterEngine) }
+        // Press-to-speak input. One-shot: press, speak, get text, stop.
+        sttBridge = SpeechRecognizerBridge(this).also { it.attach(flutterEngine) }
         speechBridge = SpeechBridge(applicationContext).also { it.attach(flutterEngine) }
         lightSensorBridge = LightSensorBridge(applicationContext).also { it.attach(flutterEngine) }
     }
@@ -62,7 +65,14 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        // Release every hardware resource the bridges hold.
+        //
+        // A leaked SpeechRecognizer keeps the microphone open, which is visible
+        // in `dumpsys media.audio_flinger` and is exactly the always-listening
+        // behaviour this app deliberately avoids. The TTS engine holds a native
+        // context for the same reason.
         if (::speechBridge.isInitialized) speechBridge.detach()
+        if (::sttBridge.isInitialized) sttBridge.detach()
         super.onDestroy()
     }
 

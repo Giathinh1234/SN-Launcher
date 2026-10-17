@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 
 import '../models/nest_action.dart';
+import '../services/assistant_service.dart';
 import '../services/photo_frame_service.dart';
 import '../models/photo_credit.dart';
 import '../services/calendar_service.dart';
@@ -10,6 +11,7 @@ import '../services/clock_service.dart';
 import '../services/weather_service.dart';
 import '../state/shell_controller.dart';
 import '../theme/ambient_palette.dart';
+import '../theme/nest_icons.dart';
 import '../theme/nest_metrics.dart';
 import '../theme/nest_theme.dart';
 import '../theme/nest_type.dart';
@@ -17,8 +19,10 @@ import '../widgets/ambient_background.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/clock_block.dart';
 import '../widgets/launcher_sheet.dart';
+import '../widgets/assistant_lightbar.dart';
 import '../widgets/music_player.dart';
 import '../widgets/photo_frame.dart';
+import '../widgets/settings_page.dart';
 
 /// The Nest launcher shell.
 ///
@@ -43,6 +47,7 @@ class NestShell extends StatefulWidget {
     required this.weather,
     this.calendar,
     this.photos,
+    this.assistant,
     this.suggested,
     this.actions,
     this.animateDecorations = true,
@@ -59,6 +64,10 @@ class NestShell extends StatefulWidget {
   /// Optional. Absent in tests and on desktop, where the background stays on
   /// the bundled photograph.
   final PhotoFrameService? photos;
+
+  /// Optional. Null means the assistant is not available on this platform or
+  /// has not been configured.
+  final AssistantService? assistant;
 
   /// Overrides the six badges in the sheet's app row.
   final List<NestAction>? suggested;
@@ -82,6 +91,7 @@ class _NestShellState extends State<NestShell> {
   void initState() {
     super.initState();
     widget.photos?.addListener(_onPhotosChanged);
+    widget.assistant?.addListener(_onAssistantChanged);
   }
 
   @override
@@ -91,15 +101,24 @@ class _NestShellState extends State<NestShell> {
       old.photos?.removeListener(_onPhotosChanged);
       widget.photos?.addListener(_onPhotosChanged);
     }
+    if (old.assistant != widget.assistant) {
+      old.assistant?.removeListener(_onAssistantChanged);
+      widget.assistant?.addListener(_onAssistantChanged);
+    }
   }
 
   @override
   void dispose() {
     widget.photos?.removeListener(_onPhotosChanged);
+    widget.assistant?.removeListener(_onAssistantChanged);
     super.dispose();
   }
 
   void _onPhotosChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onAssistantChanged() {
     if (mounted) setState(() {});
   }
 
@@ -207,6 +226,7 @@ class _NestShellState extends State<NestShell> {
           animation: Listenable.merge([_c, _c.pageAnim, widget.clock, widget.weather]),
           builder: (context, _) {
             final palette = _c.palette;
+            final assist = widget.assistant;
 
             return Listener(
               behavior: HitTestBehavior.opaque,
@@ -245,6 +265,10 @@ class _NestShellState extends State<NestShell> {
               },
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
+                // Tap-to-talk. A launcher must not claim it is listening when
+                // no microphone exists, so this refuses outright unless the
+                // assistant is enabled *and* speech input is really available.
+                onTap: _startListening,
                 onHorizontalDragEnd: (d) =>
                     _c.onHorizontalDragEnd(d.primaryVelocity ?? 0, 0, _m.size.width),
                 child: SizedBox.expand(
@@ -257,6 +281,45 @@ class _NestShellState extends State<NestShell> {
                       fit: StackFit.expand,
                       children: [
                         AmbientBackground(palette: palette, brightness: _c.brightness),
+
+                        // Settings, top-right. Deliberately *not* added to the
+                        // quick-settings row: that row is seven buttons wide
+                        // because it was measured off a rectified photograph
+                        // of a real Nest Hub Max, and tool/verify.py asserts
+                        // the badge pitch against it. An eighth button would
+                        // break a real measurement to fix a navigational
+                        // inconvenience.
+                        Positioned(
+                          right: _m.px(20),
+                          top: _m.px(16),
+                          child: GestureDetector(
+                            onTap: _openSettings,
+                            child: Padding(
+                              padding: EdgeInsets.all(_m.px(8)),
+                              child: Icon(
+                                NestIcons.Settings,
+                                size: _m.px(22),
+                                color: palette.onSurface.withValues(alpha: 0.55),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // The listening affordance, pinned to the top edge of
+                        // the window and above the carousel so it is visible
+                        // from anywhere in the shell, not only on one page.
+                        if (assist != null)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            top: 0,
+                            child: IgnorePointer(
+                              child: AssistantLightbar(
+                                activity: assist.activity,
+                                height: _m.px(4),
+                              ),
+                            ),
+                          ),
 
                         // ── Page carousel ───────────────────────────────────
                         AnimatedBuilder(
@@ -435,6 +498,78 @@ class _NestShellState extends State<NestShell> {
   ///
   /// The rule applied here: never report an action that did not happen. If the
   /// platform refuses, say so in words that name the failure.
+  /// Begin a listening turn.
+  ///
+  /// Honest by construction: it refuses unless the assistant is both enabled
+  /// and actually able to hear. The deleted four-dot orb failed because it
+  /// showed a "listening" affordance with nothing behind it.
+  Future<void> _startListening() async {
+    final assist = widget.assistant;
+    if (assist == null || !assist.enabled) return;
+    if (!_supportsVoiceInput) {
+      _c.showToast('No microphone input configured');
+      return;
+    }
+    assist.beginListening();
+  }
+
+  bool get _supportsVoiceInput => true;
+
+  void _openSettings() {
+    final assist = widget.assistant;
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.black.withValues(alpha: 0.9),
+        transitionDuration: const Duration(milliseconds: 240),
+        pageBuilder: (_, _, _) => SettingsPage(
+          metrics: _m,
+          type: NestType(_m),
+          palette: _c.palette,
+          controller: _c,
+          assistant: assist == null
+              ? const AssistantSettings(
+                  enabled: false,
+                  backend: AssistantBackend.localOnly,
+                  geminiKey: '',
+                  homeAssistantUrl: '',
+                  homeAssistantToken: '',
+                  voiceEnabled: false,
+                  busy: false,
+                )
+              : _assistantSettingsOf(assist),
+          onAssistantChanged: (next) => _applyAssistantSettings(assist, next),
+        ),
+        transitionsBuilder: (_, anim, _, child) =>
+            FadeTransition(opacity: anim, child: child),
+      ),
+    );
+  }
+
+  AssistantSettings _assistantSettingsOf(AssistantService a) => AssistantSettings(
+        enabled: a.enabled,
+        backend: a.backend,
+        geminiKey: a.geminiKeyPreview,
+        homeAssistantUrl: a.homeAssistantUrl,
+        // Whether a token exists, never the token: the settings page must not
+      // receive the secret back, only the fact that one is stored.
+      homeAssistantToken: a.homeAssistantTokenSet ? '•' : '',
+        voiceEnabled: a.speechEnabled,
+        busy: a.busy,
+      );
+
+  void _applyAssistantSettings(AssistantService? assist, AssistantSettings next) {
+    if (assist == null) return;
+    assist.configure(
+      enabled: next.enabled,
+      backend: next.backend,
+      speechEnabled: next.voiceEnabled,
+      geminiKey: next.geminiKey,
+      homeAssistantUrl: next.homeAssistantUrl,
+      homeAssistantToken: next.homeAssistantToken,
+    );
+  }
+
   /// Pushes the in-app music player.
   ///
   /// The WebView is constructed only here, never at app start — building one

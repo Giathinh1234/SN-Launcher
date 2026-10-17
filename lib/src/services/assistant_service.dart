@@ -7,6 +7,7 @@ import '../models/nest_voice.dart';
 import 'gemini_service.dart';
 import 'home_assistant_service.dart';
 import 'platform_bridge.dart';
+import 'speech_to_text.dart';
 
 /// One understood request.
 @immutable
@@ -63,7 +64,9 @@ class AssistantService extends ChangeNotifier {
     GeminiService? gemini,
     HomeAssistantService? homeAssistant,
     Voice? voice,
+    SpeechToText? stt,
   })  : _platform = platform ?? const PlatformBridge(),
+        _stt = stt ?? SpeechToText(),
         _gemini = gemini ?? GeminiService(),
         _ha = homeAssistant ?? HomeAssistantService(),
         _voice = voice ?? Voice();
@@ -72,6 +75,8 @@ class AssistantService extends ChangeNotifier {
   final GeminiService _gemini;
   final HomeAssistantService _ha;
   final Voice _voice;
+  final SpeechToText _stt;
+  String _haToken = '';
 
   // ── Configuration ──────────────────────────────────────────────────────────
   bool _enabled = false;
@@ -99,12 +104,62 @@ class AssistantService extends ChangeNotifier {
     if (backend != null) _backend = backend;
     if (policy != null) _policy = policy;
     if (speechEnabled != null) _speechEnabled = speechEnabled;
-    if (geminiKey != null) _gemini.setApiKey(geminiKey);
-    if (homeAssistantUrl != null && homeAssistantToken != null) {
-      _ha.setConfig(url: homeAssistantUrl, token: homeAssistantToken);
+    if (geminiKey != null) {
+      // A masked preview coming back from the settings page means "unchanged".
+      if (!geminiKey.contains('•')) {
+        _geminiKey = geminiKey;
+        _gemini.setApiKey(geminiKey);
+      }
+    }
+    if (homeAssistantUrl != null) {
+      _haUrl = homeAssistantUrl;
+      // A masked value coming back from the settings page means "unchanged".
+      if (homeAssistantToken != null && !homeAssistantToken.contains('•')) {
+        _haToken = homeAssistantToken;
+      }
+      _ha.setConfig(url: homeAssistantUrl, token: _haToken);
     }
     notifyListeners();
   }
+
+  String _geminiKey = '';
+  String get geminiKeyPreview {
+    // Never hand the real key to a widget that may render it. The settings
+    // page only needs to know whether one is set.
+    if (_geminiKey.isEmpty) return '';
+    return '${_geminiKey.substring(0, 4)}${'•' * 8}';
+  }
+
+  String _haUrl = '';
+  String get homeAssistantUrl => _haUrl;
+
+  bool get homeAssistantTokenSet => _haToken.isNotEmpty;
+
+  /// Begin one listening turn: listen, transcribe, then handle.
+  ///
+  /// The bar only moves after this has genuinely started listening, which is
+  /// the whole point — the deleted four-dot orb showed a listening affordance
+  /// with no microphone behind it.
+  Future<void> beginListening({int timeoutMs = 8000}) async {
+    if (_busy) return;
+    _set(AssistActivity.listening, status: 'Listening');
+    try {
+      final heard = await _stt.listenOnce(timeoutMs: timeoutMs);
+      if (heard == null || heard.trim().isEmpty) {
+        _set(AssistActivity.idle, status: 'Did not catch that');
+        return;
+      }
+      await handle(heard);
+    } finally {
+      if (_activity == AssistActivity.listening) {
+        _set(AssistActivity.idle, status: 'Did not catch that');
+      }
+    }
+  }
+
+  /// Drive a turn from typed text. Used by tests and by any future on-screen
+  /// keyboard; identical path to voice once the words exist.
+  Future<AssistIntent> handleTyped(String text) => handle(text);
 
   // ── State ──────────────────────────────────────────────────────────────────
   AssistActivity _activity = AssistActivity.idle;

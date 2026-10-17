@@ -3,9 +3,9 @@ package dev.snlauncher.snlauncher
 import android.Manifest
 import android.app.Activity
 import android.content.ContentUris
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.SystemClock
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.CalendarContract
@@ -276,26 +276,29 @@ class PlatformBridge(private val activity: Activity) : MethodChannel.MethodCallH
                 "previous" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
                 else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
             }
-            val now = SystemClock.uptimeMillis()
-            // A media key needs DOWN then UP; a lone KeyEvent is ignored by most
-            // receivers.
-            dispatchKeyEvent(keyCode, now)
-            dispatchKeyEvent(keyCode, now + 40)
+            // A media key needs DOWN then UP; a lone KeyEvent is ignored by
+            // most receivers.
+            dispatchKeyEvent(keyCode)
             result.success(mapOf("ok" to true))
         } catch (_: Exception) {
             result.success(mapOf("ok" to false))
         }
     }
 
-    private fun dispatchKeyEvent(keyCode: Int, at: Long) {
-        val down = KeyEvent(
-            at, at, KeyEvent.ACTION_DOWN, keyCode, 0
-        )
-        val up = KeyEvent(
-            at + 40, at + 40, KeyEvent.ACTION_UP, keyCode, 0
-        )
-        activity.dispatchEvent(up)
-        activity.dispatchEvent(down)
+    /**
+     * Injects a media key through [AudioManager], not [Activity.dispatchEvent].
+     *
+     * `dispatchEvent` is protected on Activity and is not callable from here,
+     * and the usual workaround — `Instrumentation.sendKeyDownUpSync` — needs the
+     * signature-level INJECT_EVENTS permission, which a normal app cannot hold.
+     * `AudioManager.dispatchMediaKeyEvent` is public since API 19, needs no
+     * permission, and reaches exactly the same media session.
+     */
+    private fun dispatchKeyEvent(keyCode: Int) {
+        val audio = activity.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            ?: return
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
     }
 
     /** Records a countdown label so the launcher can show it. */

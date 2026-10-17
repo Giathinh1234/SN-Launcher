@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 
 import 'src/models/nest_action.dart';
 import 'src/models/photo_credit.dart';
+import 'src/services/assistant_service.dart';
 import 'src/services/calendar_service.dart';
 import 'src/services/photo_frame_service.dart';
+import 'src/services/settings_store.dart';
 import 'src/services/frame_stats.dart';
 import 'src/screens/nest_shell.dart';
 import 'src/services/clock_service.dart';
@@ -68,6 +70,8 @@ class _NestLauncherAppState extends State<NestLauncherApp>
   late final WeatherService _weather = WeatherService();
   late final CalendarService _calendar = CalendarService();
   late final PhotoFrameService _photos = PhotoFrameService();
+  late final AssistantService _assistant = AssistantService();
+  final SettingsStore _settings = SettingsStore();
   final FrameStats _frameStats = FrameStats();
   bool _weatherConfigured = false;
   ShellController? _controller;
@@ -85,7 +89,49 @@ class _NestLauncherAppState extends State<NestLauncherApp>
       // Never on the critical path: the bundled photograph is already on
       // screen, and this only upgrades it later.
       unawaited(_photos.start());
+      unawaited(_restoreAssistant());
     });
+  }
+
+  /// Restore assistant config. Reads settings, pushes them into the service.
+  Future<void> _restoreAssistant() async {
+    await _settings.load();
+    if (!mounted) return;
+    final enabled = _settings.read(SettingKeys.assistantEnabled, false,
+        (v) => v == 'true');
+    final backendName = _settings.get(SettingKeys.assistantBackend);
+    final backend = AssistantBackend.values.firstWhere(
+      (b) => b.name == backendName,
+      orElse: () => AssistantBackend.localOnly,
+    );
+    final voice = _settings.read(SettingKeys.voiceEnabled, true, (v) => v == 'true');
+
+    _assistant.configure(
+      enabled: enabled,
+      backend: backend,
+      speechEnabled: voice,
+      geminiKey: _settings.get(SettingKeys.geminiApiKey) ?? '',
+      homeAssistantUrl: _settings.get(SettingKeys.haUrl) ?? '',
+      homeAssistantToken: _settings.get(SettingKeys.haToken) ?? '',
+    );
+    // Persist whatever the service ended up with, so the settings page opens
+    // showing the truth rather than an empty form.
+    _assistant.addListener(_persistAssistant);
+  }
+
+  void _persistAssistant() {
+    unawaited(_settings.put(
+      SettingKeys.assistantEnabled,
+      '${_assistant.enabled}',
+    ));
+    unawaited(_settings.put(
+      SettingKeys.assistantBackend,
+      _assistant.backend.name,
+    ));
+    unawaited(_settings.put(
+      SettingKeys.voiceEnabled,
+      '${_assistant.speechEnabled}',
+    ));
   }
 
   @override
@@ -104,6 +150,7 @@ class _NestLauncherAppState extends State<NestLauncherApp>
     _controller?.dispose();
     _calendar.dispose();
     _photos.dispose();
+    _assistant.dispose();
     _clock.dispose();
     _weather.dispose();
     _frameStats.dispose();
@@ -140,6 +187,7 @@ class _NestLauncherAppState extends State<NestLauncherApp>
               weather: _weather,
               calendar: _calendar,
               photos: _photos,
+              assistant: _assistant,
             ),
             if (FrameStats.enabled) PerfOverlay(stats: _frameStats),
           ],
