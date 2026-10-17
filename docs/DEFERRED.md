@@ -9,34 +9,44 @@ flagged off, because it lied to the user about what the device could do.
 
 ---
 
-## 1. Tap-to-talk / listening — REMOVED, not deferred
+## 1. Tap-to-talk / listening — REBUILT
 
-**Status: the code is gone.** Not flagged off — deleted. `AssistantState`,
-`kAssistantEnabled`, `beginListening`/`stopListening`, `assistant_orb.dart` and
-the overlay are all removed. Nothing is left to switch back on by accident.
+**Status: done.** It was deleted once and then rebuilt properly. This entry is
+the record of why it was deleted, because the reason is the whole design brief
+for what replaced it.
 
-The user asked for it to be removed outright rather than parked, so this entry
-exists only to record *why*, in case it is ever rebuilt.
+### Why the first version was deleted
 
-It was removed for two reasons, both confirmed by rendering it and looking:
+It claimed capability it did not have. Tapping the screen played a looping
+four-dot mark captioned "Listening…", which became "Thinking…", then timed
+itself back to idle. No microphone was attached, nothing was transcribed, and
+no request went anywhere. A user who tapped it was told the launcher understood
+them.
 
-1. **It claimed capability it did not have.** Tapping the screen played a
-   looping four-dot mark captioned "Listening…", which became "Thinking…", then
-   timed itself back to idle. No microphone was attached, no audio was
-   captured, and nothing was transcribed. A user who tapped it was told the
-   launcher understood them.
+The animation was separately broken: `AnimationController.repeat()` was called
+in a field initialiser, so it ignored `animateDecorations` entirely — there was
+no static frame to ever capture, which is why the unit tests passed throughout
+and only rendering it revealed that each dot scaled to 1.45x on its own phase
+and Google's yellow lerped through olive.
 
-2. **The animation was visibly broken.** `AnimationController.repeat()` was
-   called in a field initialiser, so it ignored `animateDecorations` entirely —
-   there was no static frame to ever capture, which is why the unit tests passed
-   throughout and nobody noticed. Each of the four dots scaled to 1.45x on its
-   own phase, so they were four different sizes at any instant, and each lerped
-   from a muddy grey-blue to its brand colour. Caught mid-lerp, Google's yellow
-   `#FBBC04` rendered as dark olive. The mark read as a mistake, not a logo.
+### Why that matters for the replacement
 
-The lesson, worth keeping: this failed not because speech is hard but because
-the UI was permitted to assert something untrue. Whatever replaces it must not
-be able to reach a "listening" state without a real microphone behind it.
+The feature failed not because speech is hard but because **the UI was
+permitted to assert something untrue.** Every rule below exists to stop that
+happening again:
+
+* The lightbar only moves after recognition has genuinely started.
+* A silent room, a denied permission, a missing engine and a timeout all
+  produce "did not catch that" — never a fabricated transcript.
+* A local intent that is *understood* but which the hardware refuses reports
+  the refusal, rather than falling through to the remote and implying the
+  remote answered.
+* Recognition is **one-shot**. A leaked `SpeechRecognizer` holds the
+  microphone, which is visible in `dumpsys media.audio_flinger` and is exactly
+  the always-listening behaviour this app exists to avoid.
+
+If you extend this, the test to write is not "does it recognise 'turn on the
+lights'" — it is "does it stay silent when there is nothing to hear".
 
 ---
 
