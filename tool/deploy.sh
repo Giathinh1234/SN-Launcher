@@ -113,6 +113,10 @@ fi
 
 echo "connected: $D"
 export NEST_DEVICE="$D"
+# `$ADB` was expanded at the top of this script with the *original* address, so
+# it still names the stale port after discovery. Re-derive it, or every command
+# after install silently targets a device that is not there.
+ADB="adb -s $D"
 
 if [[ $build -eq 1 ]]; then
   echo "building release apk"
