@@ -459,6 +459,30 @@ Two things the harness has to handle, both discovered the hard way:
 
 ---
 
+## Testing on new hardware
+
+**See [`docs/TESTING.md`](docs/TESTING.md).** The short version:
+
+```bash
+./tool/deploy.sh 192.168.1.55   # install + launch, finds the device if you don't
+./tool/e2e.sh                   # exercise every gesture and verify the layout
+./tool/test_dock.sh             # prove each quick-settings button does something
+```
+
+Wireless debugging assigns an ephemeral port, so `deploy.sh` discovers the
+address rather than trusting a saved one. It also extends the screen timeout and
+dismisses the keyguard before capturing — a sleeping tablet's first screenshot
+is black, and every measurement taken from one is meaningless.
+
+Do not trust `dumpsys gfxinfo`: it reports zero frames for any Flutter app
+because the app bypasses HWUI. Use the `PERF_OVERLAY=true` build for frame
+timing.
+
+If rendering is broken on an unfamiliar chipset — hangs, garbage, black —
+`-PenableImpeller=false` falls back to Skia/OpenGL.
+
+---
+
 ## Build
 
 ```bash
