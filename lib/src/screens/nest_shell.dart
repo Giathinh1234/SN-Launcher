@@ -703,7 +703,7 @@ class _DigestPage extends StatelessWidget {
     final svc = photos;
     if (svc == null) return null;
     return _Card(
-      title: 'Background',
+      title: 'Photos',
       metrics: m,
       palette: palette,
       type: type,
@@ -745,7 +745,9 @@ class _DigestPage extends StatelessWidget {
               ),
               SizedBox(width: m.px(8)),
               _Toggle(
-                label: 'Next now',
+                // "Next now" overflowed this column's right edge and spilled
+                // into the neighbouring card. "Next" fits.
+                label: 'Next',
                 on: false,
                 metrics: m,
                 type: type,
