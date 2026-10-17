@@ -38,16 +38,21 @@ android {
             (project.findProperty("enableImpeller") as String?) ?: "true"
     }
 
-    // Per-ABI APKs keep the download small — important when the target device
-    // is on a metered connection.
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("armeabi-v7a", "arm64-v8a", "x86_64")
-            isUniversalApk = true
-        }
-    }
+    // No `splits` block here on purpose.
+    //
+    // Android App Bundles *forbid* ABI splits: with the block enabled,
+    // `flutter build appbundle` fails at buildReleasePreBundle with "Multiple
+    // shrunk-resources files found". The bundle format already does per-ABI
+    // delivery, so splitting it too buys nothing.
+    //
+    // Per-ABI APKs are still one flag away, and Flutter implements them
+    // natively — no Gradle configuration needed:
+    //
+    //     flutter build apk --release --split-per-abi
+    //
+    // which matters on this project's hardware: the universal APK is 48 MB
+    // because it carries three ABIs, while the arm64 one is 17.6 MB. For a
+    // tablet on a metered connection that is a real difference.
 
     buildTypes {
         release {

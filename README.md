@@ -461,11 +461,64 @@ Two things the harness has to handle, both discovered the hard way:
 ## Build
 
 ```bash
-flutter pub get
-flutter build apk --release          # Android, per-ABI splits
-flutter build linux --release        # Linux kiosk
-flutter build macos --release        # macOS
+./tool/build_all.sh          # every platform this host can produce
 ```
+
+Or individually:
+
+| Target | Command | Needs |
+| --- | --- | --- |
+| Android, per-ABI | `flutter build apk --release --split-per-abi` | Android SDK + JDK |
+| Android, universal | `flutter build apk --release` | Android SDK + JDK |
+| Android, Play bundle | `flutter build appbundle --release` | Android SDK + JDK |
+| Linux kiosk | `flutter build linux --release` | **a Linux host** |
+| macOS | `flutter build macos --release` | **full Xcode** |
+
+### Android sizes
+
+The universal APK is **48 MB** because it carries three ABIs. The per-ABI ones
+are a fraction of that, which matters on a metered connection:
+
+| Artefact | Size |
+| --- | --- |
+| `app-armeabi-v7a-release.apk` | 15.0 MB |
+| `app-arm64-v8a-release.apk` | 17.6 MB — the T20 |
+| `app-x86_64-release.apk` | 19.1 MB — emulators |
+| `app-release.apk` (universal) | 48.4 MB |
+| `app-release.aab` | 48.4 MB |
+
+There is deliberately **no `splits` block in `build.gradle.kts`**. Android App
+Bundles forbid ABI splits and fail with *"Multiple shrunk-resources files
+found"*; the bundle format already does per-ABI delivery. Flutter implements
+`--split-per-abi` natively, so side-loaded APKs are still one flag away.
+
+### Desktop targets are not cross-compilable
+
+Flutter cannot build a desktop target for a foreign host, so these two have to
+be built where they will run. `build_all.sh` detects that and says so rather
+than failing.
+
+**Linux** needs the GTK toolchain:
+
+```bash
+sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+flutter build linux --release
+# -> build/linux/x64/release/bundle/
+```
+
+**macOS** needs a *full* Xcode. The Command Line Tools are not sufficient —
+Flutter wants the macOS SDK and the AppKit build phase:
+
+```bash
+xcode-select -s /Applications/Xcode.app
+flutter build macos --release
+# -> build/macos/Build/Products/Release/SN-Launcher.app
+```
+
+The Dart side is already platform-clean: `flutter build bundle` compiles the
+whole tree, and every mobile-only path degrades gracefully on desktop —
+`PlatformBridge` catches `MissingPluginException`, `SettingsStore` falls back to
+a file, `CalendarService` reports itself unavailable.
 
 ### Raspberry Pi / Linux kiosk
 
