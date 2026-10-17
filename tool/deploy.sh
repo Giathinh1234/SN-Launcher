@@ -33,16 +33,86 @@ for arg in "$@"; do
   esac
 done
 
-# ── Wait for the device rather than failing on the first refused connection ──
-if ! $ADB get-state >/dev/null 2>&1; then
-  echo "waiting for $D — wake the tablet if this hangs"
-  for _ in $(seq 1 30); do
-    adb connect "$D" >/dev/null 2>&1 || true
-    if $ADB get-state >/dev/null 2>&1; then break; fi
-    sleep 2
+# ── Find the device ──────────────────────────────────────────────────────────
+# Wireless debugging (Android 11+) assigns an *ephemeral* port. The address that
+# worked last week is not guaranteed to work now, so the configured one is only
+# the first guess. Order of preference:
+#   1. $D, if it happens to be right
+#   2. `adb mdns services` — the tablet advertises itself over mDNS while
+#      wireless debugging is on, which is the authoritative answer
+#   3. a scan of the ephemeral range, for when mDNS is unavailable
+online() { $ADB get-state >/dev/null 2>&1; }
+
+mdns_connect() {
+  # Lines look like: adb-<hash>  _adb-tls-connect._tcp  192.168.1.100:55555
+  adb mdns services 2>/dev/null \
+    | grep '_adb-tls-connect' \
+    | awk '{print $NF}' \
+    | while read -r addr; do
+        adb connect "$addr" >/dev/null 2>&1 || true
+      done
+  adb devices | grep -q "device$"
+}
+
+scan_connect() {
+  python3 - <<'PY'
+import socket, concurrent.futures
+HOST = '192.168.1.100'
+def probe(p):
+    s = socket.socket(); s.settimeout(1.0)
+    try:
+        if s.connect_ex((HOST, p)) == 0:
+            return p
+    except Exception:
+        pass
+    finally:
+        s.close()
+for p in concurrent.futures.ThreadPoolExecutor(max_workers=500).map(
+        probe, range(30000, 50000)):
+    if p:
+        print(p)
+PY
+}
+
+connect_any() {
+  adb connect "$D" >/dev/null 2>&1 || true
+  if online; then return 0; fi
+
+  echo "  $D not answering; trying mDNS discovery"
+  for _ in $(seq 1 10); do
+    mdns_connect && online && { D="$($ADB devices | awk -v k="device$" '$2==k{print $1}' | head -1)"; return 0; }
+    sleep 3
   done
+
+  echo "  mDNS found nothing; scanning the ephemeral port range"
+  for p in $(scan_connect); do
+    if adb connect "192.168.1.100:$p" 2>&1 | grep -q "connected to"; then
+      D="192.168.1.100:$p"
+      echo "  found adb on port $p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! connect_any; then
+  cat <<EOF
+device not reachable.
+
+  Tried: $D, mDNS discovery, and a scan of ports 30000-49999 on 192.168.1.100.
+
+If the tablet is powered off or off Wi-Fi, none of that can work -- a machine
+that is not on the network cannot be reached from it. Wake it, confirm it is on
+the same Wi-Fi, and run this again.
+
+If it IS awake and on Wi-Fi but wireless debugging is off, enable it in
+Developer options; it will show a fresh IP:port.
+EOF
+  exit 1
 fi
-$ADB get-state >/dev/null 2>&1 || { echo "device not reachable"; exit 1; }
+
+echo "connected: $D"
+export NEST_DEVICE="$D"
 
 if [[ $build -eq 1 ]]; then
   echo "building release apk"
