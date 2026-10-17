@@ -1,0 +1,148 @@
+HOW TO USE AN AGENT — LESSONS FROM THIS SESSION
+================================================
+Written after the blow-up on 17 Oct 2026. Plain text on purpose: this should be
+printable, and it should survive context compression.
+
+Committed to the repo, so it cannot be lost. That is the whole point of it.
+
+
+1. THE ONE THAT MATTERS MOST
+----------------------------
+Build less. Verify more.
+
+In three turns you asked for five major features:
+
+    * rotating backgrounds downloaded from the internet
+    * an ad-blocked music player
+    * a settings page
+    * a Siri-style assistant
+    * speech-to-text AND text-to-speech
+
+Five features. Zero verified on real hardware.
+
+Projects do not die from bad code. They die at 70% complete, which is
+exactly where something stops being interesting and starts being work. If you
+feel the pull to add a sixth thing, that pull is the signal to go and test.
+
+
+2. YOUR SPECS ARE IMPLICIT. THAT IS MOSTLY FINE, SOMETIMES NOT.
+----------------------------------------------------------------
+"All the things I told you to do later" had three plausible meanings depending
+on which part of the conversation you meant. It had to be asked.
+
+Specifying is cheap and feels like stalling. It is not stalling. Thirty
+seconds writing "I want A, B and C" beats redoing C.
+
+Rule of thumb: if a request could reasonably be read two ways, it will be.
+
+
+3. ASK FOR THINGS THAT ARE POSSIBLE. CHECK FIRST.
+--------------------------------------------------
+You asked for Spotify ad blocking. The ad is inserted server-side into the audio
+stream — there is nothing on the client to filter. It cannot be done. Not
+"hard", impossible.
+
+You did not know that. That is fine, that is what the agent is for. The lesson
+is to ask "is this possible?" BEFORE the feature gets built, not after.
+
+Same class of thing:
+    * "most natural female voice ever" -> depends what voices the device has
+    * "pixel accurate to the real Nest" -> only 2 of 36 constants are verified
+
+Worth asking, or asking the agent to tell you.
+
+
+4. YOU CORRECT THE AGENT WELL. KEEP DOING THAT.
+-------------------------------------------------
+Twice you told me something and I was wrong:
+
+    * "the adb is wireless"  -> the port was ephemeral, you were right
+    * "just type codex"       -> it was installed the whole time
+
+Both times I had asserted something without checking. You caught it because
+you knew the hardware better than I did.
+
+Keep correcting. The alternative is an agent that is confidently wrong and
+never told.
+
+
+5. BE MORE SCEPTICAL OF THE AGENT THAN YOU HAVE BEEN
+-----------------------------------------------------
+I built about 90% of this. That is not a good thing to let happen quietly.
+
+A fast agent is genuinely useful. It is also very easy to mistake for a
+partner who knows what to do next. I said yes to too much.
+
+If the agent agrees with everything, it is not thinking. Push back on it.
+
+
+6. ATTRIBUTION AND PROVENANCE MATTER. YOU NOTICED. GOOD.
+----------------------------------------------------------
+You wrote INFO.md asking whether some stranger's account had touched your
+repo, and whether Claude had somehow been involved. Most people never check.
+
+You were right to. Two things did happen:
+
+    * commits were authored under an older account of yours, "giathinh".
+      History was rewritten so everything reads Giathinh1234.
+    * a Co-Authored-By: Claude trailer was in the first commit. It was not
+      harness-injected, it was in the repo, and it was removed.
+
+Neither was anybody else's work. But neither was right either. Keep checking.
+
+
+7. TEST BEFORE YOU ADD
+----------------------
+You said you would test on more e-waste devices. Then asked for five features
+instead. That is not a criticism — testing is boring and building is not.
+That is precisely why it does not happen unless it is decided in advance.
+
+When you do test: docs/TESTING.md has the order, sorted by how often each check
+finds something rather than by how interesting it is.
+
+
+8. DOCS THAT LIE ARE WORSE THAN NO DOCS
+----------------------------------------
+The README said "pixel-accurate to the real Nest — measure, don't guess."
+That was false at the time and nobody had checked. 36 constants, 10 marked
+measured, and the verifier only asserts two things.
+
+Also: DEFERRED.md said the assistant was "removed, no flag left to flip"
+hours after it had been rebuilt.
+
+Write down what is true. Delete what is not. It is easier to have no docs
+than to have docs that cost you an afternoon.
+
+
+9. CONTEXT COMPRESSION LOSES THINGS. COMMIT.
+---------------------------------------------
+You were right to be scared of this, and right to ask for it to be written
+down.
+
+    * this file                 -> how to use the agent
+    * AGENTS.md                 -> how the agent should work
+    * git log                   -> what actually happened, permanently
+    * docs/DEFERRED.md          -> what is deliberately not done, and why
+    * docs/ASSISTANT.md         -> what the assistant can and cannot do
+
+If a session gets cut short, the repo is the memory. Nothing important should
+live only in a conversation.
+
+
+10. THE THING YOU ALREADY DO WELL
+----------------------------------
+You use the hardware. You caught the back-button bug, the un-dismissable dock,
+and the broken icons without using the vocabulary for any of them.
+
+    "if u slide the app dock it will show u slowly and cannot put it down"
+
+That is an accurate bug report. Keep doing exactly that. You are better at
+knowing what is wrong with a device than at describing what you want built —
+so say both, and let the second one be rough.
+
+
+SUMMARY
+-------
+Ask for less. Check it works. Correct the agent. Write down what is true.
+
+The agent will help with all four. It cannot do them for you.

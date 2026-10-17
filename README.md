@@ -556,6 +556,19 @@ nestlaunch --size=1024x600    # force an exact panel size
 
 ---
 
+## Working agreements
+
+Two documents govern how this gets built, both committed so they survive
+context compression:
+
+* **[`AGENTS.md`](AGENTS.md)** — the agent's operating rules: pros and cons
+  before building, refuse impossible asks, state the built-versus-verified
+  ratio, and stop adding features at 70%.
+* **[`docs/HOW-TO-USE-THIS.txt`](docs/HOW-TO-USE-THIS.txt)** — the human side:
+  the lessons from this session that actually cost something.
+
+---
+
 ## Deliberately deferred
 
 Four things, written up in full in [`docs/DEFERRED.md`](docs/DEFERRED.md):
