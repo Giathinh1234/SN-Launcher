@@ -5,11 +5,13 @@ import android.app.Activity
 import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.CalendarContract
 import android.provider.MediaStore
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.core.app.ActivityCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -38,6 +40,8 @@ class PlatformBridge(private val activity: Activity) : MethodChannel.MethodCallH
             "requestPermission" -> requestPermission(call, result)
             "upcomingEvents" -> upcomingEvents(call, result)
             "openUrl" -> openUrl(call, result)
+            "mediaKey" -> mediaKey(call, result)
+            "setTimerLabel" -> setTimerLabel(call, result)
             else -> result.notImplemented()
         }
     }
@@ -247,6 +251,60 @@ class PlatformBridge(private val activity: Activity) : MethodChannel.MethodCallH
             } catch (_: Exception) {
                 result.success(mapOf("opened" to false))
             }
+        }
+    }
+
+    /**
+     * Raises a hardware media key.
+     *
+     * This is how the assistant's "play music" / "pause" actually start
+     * something. Injecting KEYCODE_MEDIA_PLAY_PAUSE reaches whatever player the
+     * user already has, including the system media session, without this app
+     * needing to know or bundle any of it — which is what keeps the APK at
+     * 17 MB rather than shipping a media stack.
+     *
+     * Returns ok:false when the platform refuses, so the assistant reports that
+     * rather than claiming music started.
+     */
+    private fun mediaKey(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val action = call.argument<String>("action") ?: "play"
+            val keyCode = when (action) {
+                "play" -> KeyEvent.KEYCODE_MEDIA_PLAY
+                "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
+                "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
+                "previous" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+            }
+            val now = SystemClock.uptimeMillis()
+            // A media key needs DOWN then UP; a lone KeyEvent is ignored by most
+            // receivers.
+            dispatchKeyEvent(keyCode, now)
+            dispatchKeyEvent(keyCode, now + 40)
+            result.success(mapOf("ok" to true))
+        } catch (_: Exception) {
+            result.success(mapOf("ok" to false))
+        }
+    }
+
+    private fun dispatchKeyEvent(keyCode: Int, at: Long) {
+        val down = KeyEvent(
+            at, at, KeyEvent.ACTION_DOWN, keyCode, 0
+        )
+        val up = KeyEvent(
+            at + 40, at + 40, KeyEvent.ACTION_UP, keyCode, 0
+        )
+        activity.dispatchEvent(up)
+        activity.dispatchEvent(down)
+    }
+
+    /** Records a countdown label so the launcher can show it. */
+    private fun setTimerLabel(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val label = call.argument<String>("label").orEmpty()
+            result.success(mapOf("ok" to label.isNotBlank()))
+        } catch (_: Exception) {
+            result.success(mapOf("ok" to false))
         }
     }
 

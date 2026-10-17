@@ -18,6 +18,8 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterActivity() {
     private lateinit var platformBridge: PlatformBridge
     private lateinit var settingsBridge: SettingsBridge
+    private lateinit var speechBridge: SpeechBridge
+    private lateinit var lightSensorBridge: LightSensorBridge
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,6 +37,8 @@ class MainActivity : FlutterActivity() {
         // the persisted-settings surface change for different reasons and have
         // different lifetimes.
         settingsBridge = SettingsBridge(applicationContext).also { it.attach(flutterEngine) }
+        speechBridge = SpeechBridge(applicationContext).also { it.attach(flutterEngine) }
+        lightSensorBridge = LightSensorBridge(applicationContext).also { it.attach(flutterEngine) }
     }
 
     override fun onRequestPermissionsResult(
@@ -55,6 +59,11 @@ class MainActivity : FlutterActivity() {
         // the very bottom edge). Re-enter immersive mode so the launcher always
         // comes back looking like the Nest.
         if (hasFocus) enterImmersiveMode()
+    }
+
+    override fun onDestroy() {
+        if (::speechBridge.isInitialized) speechBridge.detach()
+        super.onDestroy()
     }
 
     private fun enterImmersiveMode() {

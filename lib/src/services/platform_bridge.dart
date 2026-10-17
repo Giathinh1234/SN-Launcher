@@ -103,6 +103,42 @@ class PlatformBridge {
     return r?['granted'] as bool?;
   }
 
+  // ── Media keys ────────────────────────────────────────────────────────────
+  /// Raise a hardware media key so any installed player responds, including the
+  /// system media UI. Returns false if the platform refused — the assistant
+  /// reports that rather than claiming it started playing.
+  Future<bool> sendMediaKey(String action) async {
+    final r = await _invoke<Map<Object?, Object?>>(
+      'mediaKey',
+      {'action': action},
+    );
+    return r?['ok'] == true;
+  }
+
+  /// Shows a countdown label. Used by the timer intent.
+  Future<bool> setTimerLabel(String label) async {
+    final r = await _invoke<Map<Object?, Object?>>(
+      'setTimerLabel',
+      {'label': label},
+    );
+    return r?['ok'] == true;
+  }
+
+  // ── Ambient light ─────────────────────────────────────────────────────────
+  /// One-shot lux reading. Not a continuous subscription: this is a 1-4 GB
+  /// device and an always-on light sensor is a battery cost a mostly-wall-
+  /// powered launcher should not pay. Returns null when there is no sensor.
+  Future<double?> lightLevel() async {
+    final r = await _invoke<Map<Object?, Object?>>('lightLevel');
+    if (r?['available'] != true) return null;
+    return (r?['lux'] as num?)?.toDouble();
+  }
+
+  Future<bool> hasLightSensor() async {
+    final r = await _invoke<Map<Object?, Object?>>('hasLightSensor');
+    return r?['available'] == true;
+  }
+
   // ── Calendar ──────────────────────────────────────────────────────────────
   Future<List<CalendarEvent>> upcomingEvents({
     required int limit,

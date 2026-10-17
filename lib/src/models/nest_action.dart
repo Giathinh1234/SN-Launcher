@@ -167,3 +167,36 @@ const List<QuickSetting> kQuickSettings = [
 /// Quick re-colour of an [AmbientPalette] used by the bottom sheet so it always
 /// stays legible over the current ambient background.
 Color sheetFill(AmbientPalette p) => p.surface;
+/// Where the built-in assistant sends anything it cannot answer locally.
+enum AssistantBackend {
+  /// A Home Assistant instance. Chosen for homes that already run one: the
+  /// assistant becomes a thin front end for the same entities and automations
+  /// the user already has.
+  homeAssistant,
+
+  /// Google's Generative Language API directly. Best for open-ended questions,
+  /// and the only backend that can answer something like "what's the weather
+  /// like in Oslo next March" without a home-automation vocabulary.
+  gemini,
+
+  /// Local intents only — lights, media, volume, timers. No network at all.
+  /// The right choice on a device with no reliable uplink.
+  localOnly,
+}
+
+/// How the assistant behaves when a request is outside its comfort zone.
+enum AssistPolicy {
+  /// Try local intents, then ask the backend.
+  localThenRemote,
+
+  /// Go straight to the backend for anything non-trivial.
+  alwaysRemote,
+}
+
+/// What the assistant is doing, which is what the lightbar is reporting.
+///
+/// The previous implementation had a four-dot orb that animated whether or not
+/// anything was listening. It was removed because the UI was asserting something
+/// untrue. This bar is the replacement, and the rule that killed the orb applies
+/// here too: **it only moves when the assistant is genuinely doing something.**
+enum AssistActivity { idle, listening, thinking, speaking }

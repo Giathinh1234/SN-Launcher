@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.KEEP_SCREEN_ON"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <!-- Let the assistant give a short haptic tick when it starts listening, so a
+         wall display says something even when nobody is looking at it. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
 
     <!-- Touchscreen, but not required to be a phone: Nest Hubs, Raspberry Pi
          panels, HDMI sticks and repurposed tablets all qualify. -->

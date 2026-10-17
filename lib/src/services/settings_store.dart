@@ -104,4 +104,14 @@ abstract final class SettingKeys {
   static const placeName = 'placeName';
   static const rotatePhotos = 'rotatePhotos';
   static const rotateMinutes = 'rotateMinutes';
+
+  // ── Assistant ──────────────────────────────────────────────────────────────
+  // Where the assistant sends hard requests. Kept as a name, not an enum, so a
+  // value written by a newer build is not silently discarded by an older one.
+  static const assistantBackend = 'assistantBackend';
+  static const assistantEnabled = 'assistantEnabled';
+  static const geminiApiKey = 'geminiApiKey';
+  static const haUrl = 'haUrl';
+  static const haToken = 'haToken';
+  static const voiceEnabled = 'voiceEnabled';
 }
