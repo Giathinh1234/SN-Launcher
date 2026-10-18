@@ -28,7 +28,7 @@
      API-36 default. Note the comment sits outside the tag: XML does not allow
      comments inside a start tag's attribute list. -->
     <application
-        android:label="SN-Launcher"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"

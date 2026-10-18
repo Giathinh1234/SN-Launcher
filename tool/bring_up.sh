@@ -20,6 +20,11 @@ minutes="${2:-10}"
 suffix=".ef"
 [ "$variant" = "reduced" ] && suffix=""
 
+# The ef build has its own applicationId, so launching the wrong one silently
+# starts the *other* build — which would look like the install worked and tell
+# us nothing. Derived from the same rule build_variants.sh uses.
+pkg="dev.snlauncher.snlauncher${suffix}"
+
 apk_dir="build/app/outputs/flutter-apk"
 out="build/shots"
 mkdir -p "$out"
@@ -74,9 +79,9 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
       continue
     fi
 
-    printf '  installing %s\n' "$(basename "$apk")"
+    printf '  installing %s -> %s\n' "$(basename "$apk")" "$pkg"
     if adb -s "$hostport" install -r -d "$apk" 2>&1 | tail -2 | sed 's/^/    /'; then
-      adb -s "$hostport" shell monkey -p dev.snlauncher.snlauncher \
+      adb -s "$hostport" shell monkey -p "$pkg" \
         -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
       sleep 6
       adb -s "$hostport" exec-out screencap -p > "$out/$variant-$(echo "$hostport" | tr ':' '_').png"

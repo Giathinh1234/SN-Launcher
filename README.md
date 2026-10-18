@@ -495,8 +495,15 @@ not by code:
 ./tool/build_variants.sh both
 ```
 
-Both keep settings. They share an `applicationId`, so installing one replaces
-the other; open **Settings → Build** to see which is running.
+Both keep settings, and they have **different applicationIds** — so both can be
+installed on one device at the same time and compared directly:
+
+| | applicationId | Label |
+|---|---|---|
+| reduced | `dev.snlauncher.snlauncher` | SN-Launcher |
+| ef | `dev.snlauncher.snlauncher.ef` | SN-Launcher ef |
+
+**Settings → Build** also names the variant in-app.
 
 Everything else:
 

@@ -18,15 +18,43 @@ to survive in both.
 
 ## Telling them apart on a device
 
-They share an `applicationId` (`dev.snlauncher.snlauncher`), so **installing one
-replaces the other** and the launcher icon looks the same either way. They
-cannot sit side by side on one device.
+They have **different applicationIds**, so both can be installed on one device
+at the same time and compared side by side:
 
-Open **Settings → Build**. It names the variant, the config file, and how many
-features are on. Read it rather than inferring the build from behaviour.
+| | applicationId | Launcher label |
+|---|---|---|
+| reduced | `dev.snlauncher.snlauncher` | SN-Launcher |
+| ef | `dev.snlauncher.snlauncher.ef` | SN-Launcher ef |
 
-They can, however, sit on *two different devices* at once, which is the
-comparison this was built for.
+The reduced build keeps the original id, so an install that is already on a
+device survives, and every script in `tool/` that hardcodes
+`dev.snlauncher.snlauncher` keeps working unchanged.
+
+The mechanism is one Gradle property, not a flavour setup:
+
+```bash
+flutter build apk --release                          # reduced, no suffix
+flutter build apk --release -PsnAppIdSuffix=.ef      # ef
+```
+
+Flavours were deliberately not used: declaring them makes `--flavor` mandatory,
+so every build command in `tool/` would change and all the APK filenames with
+them. See the block in `android/app/build.gradle.kts`.
+
+`tool/build_variants.sh` passes the flag and then **reads the applicationId back
+out of the built APK** to check it. That check is not ceremony — see the note
+about stale Gradle output below.
+
+### One hazard worth knowing about
+
+A `-P` property does not reliably invalidate Gradle's up-to-date checks. Building
+`reduced`, then building `ef` with identical Dart defines, can leave the previous
+APK in place with no error and no warning — the manifest is simply not
+reprocessed.
+
+`tool/build_variants.sh` checks the applicationId of what it just produced and
+fails loudly if it does not match what was asked for. If you build by hand and
+the id looks wrong, `flutter clean` first.
 
 ## Changing what is in a build
 

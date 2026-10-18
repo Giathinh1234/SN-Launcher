@@ -7,6 +7,30 @@ plugins {
 android {
     namespace = "dev.snlauncher.snlauncher"
     compileSdk = flutter.compileSdkVersion
+
+    // ── Two builds, two applicationIds ─────────────────────────────────────
+    //
+    // There are two APKs (see docs/BUILDS.md) and they used to share an
+    // applicationId, which made them mutually exclusive: installing one silently
+    // uninstalled the other, and comparing them meant two devices and a note
+    // about which was which.
+    //
+    // A suffix fixes that and costs one property:
+    //
+    //     flutter build apk --release                          # reduced
+    //     flutter build apk --release -PsnAppIdSuffix=.ef      # ef
+    //
+    // Default is empty, so the reduced build keeps applicationId
+    // dev.snlauncher.snlauncher exactly as before — existing installs survive,
+    // and every script in tool/ that hardcodes the package name keeps working.
+    // Only the ef build moves, and it moves *aside* rather than replacing.
+    //
+    // A product-flavour setup would be the idiomatic Android answer and was not
+    // used: declaring flavors makes `--flavor` mandatory, so every build command
+    // in tool/ would need changing, and the APK filenames would all change too.
+    // The property keeps this to four lines.
+    val appIdSuffix = (project.findProperty("snAppIdSuffix") as String?) ?: ""
+
     // No `ndkVersion`: there is no native code in this app (url_launcher is
     // pure Kotlin), so declaring one makes AGP shell out to sdkmanager during
     // configuration and drag in a ~1 GB NDK download for nothing.
@@ -16,8 +40,26 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        // Required for the resValue("string", "app_name", …) above. AGP 8 gates
+        // this behind a feature flag and fails configuration with
+        // "defaultConfig contains custom resource values, but the feature is
+        // disabled" if it is not switched on.
+        resValues = true
+    }
+
     defaultConfig {
         applicationId = "dev.snlauncher.snlauncher"
+        applicationIdSuffix = appIdSuffix
+
+        // The launcher label, so the two are distinguishable on the home screen
+        // and in the recents list rather than only by their applicationId. The
+        // manifest references @string/app_name; this is what supplies it.
+        resValue(
+            "string",
+            "app_name",
+            "SN-Launcher" + if (appIdSuffix.isEmpty()) "" else " ef",
+        )
         // API 21 covers essentially every e-waste Android tablet still in
         // circulation (Android 5.0, 2014) up to current devices.
         minSdk = flutter.minSdkVersion
