@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/nest_action.dart';
 import '../services/assistant_service.dart';
+import '../services/feature_flags.dart';
 import '../services/photo_frame_service.dart';
 import '../models/photo_credit.dart';
 import '../services/calendar_service.dart';
@@ -135,6 +136,11 @@ class _NestShellState extends State<NestShell> {
 
   /// Licence credit for the bundled photograph. Loaded once.
   late final PhotoCredit _credit = PhotoCredit.load();
+
+  /// Which features this build was compiled with. Read once, synchronously —
+  /// the JSON is bundled and resolved before the first frame, so there is no
+  /// window where a feature flickers on for one frame and off for the next.
+  FeatureFlags get flags => FeatureFlags.current;
 
   /// The pointer currently dragging the sheet, if any. Single-owner so a
   /// second finger cannot cancel the drag in progress.
@@ -268,7 +274,7 @@ class _NestShellState extends State<NestShell> {
                 // Tap-to-talk. A launcher must not claim it is listening when
                 // no microphone exists, so this refuses outright unless the
                 // assistant is enabled *and* speech input is really available.
-                onTap: _startListening,
+                onTap: flags.isOn('assistant') ? _startListening : null,
                 onHorizontalDragEnd: (d) =>
                     _c.onHorizontalDragEnd(d.primaryVelocity ?? 0, 0, _m.size.width),
                 child: SizedBox.expand(
@@ -289,26 +295,27 @@ class _NestShellState extends State<NestShell> {
                         // the badge pitch against it. An eighth button would
                         // break a real measurement to fix a navigational
                         // inconvenience.
-                        Positioned(
-                          right: _m.px(20),
-                          top: _m.px(16),
-                          child: GestureDetector(
-                            onTap: _openSettings,
-                            child: Padding(
-                              padding: EdgeInsets.all(_m.px(8)),
-                              child: Icon(
-                                NestIcons.Settings,
-                                size: _m.px(22),
-                                color: palette.onSurface.withValues(alpha: 0.55),
+                        if (flags.isOn('settings'))
+                          Positioned(
+                            right: _m.px(20),
+                            top: _m.px(16),
+                            child: GestureDetector(
+                              onTap: _openSettings,
+                              child: Padding(
+                                padding: EdgeInsets.all(_m.px(8)),
+                                child: Icon(
+                                  NestIcons.Settings,
+                                  size: _m.px(22),
+                                  color: palette.onSurface.withValues(alpha: 0.55),
+                                ),
                               ),
                             ),
                           ),
-                        ),
 
                         // The listening affordance, pinned to the top edge of
                         // the window and above the carousel so it is visible
                         // from anywhere in the shell, not only on one page.
-                        if (assist != null)
+                        if (flags.isOn('assistant') && assist != null)
                           Positioned(
                             left: 0,
                             right: 0,
@@ -348,7 +355,7 @@ class _NestShellState extends State<NestShell> {
                                       palette: palette,
                                       progress: progress,
                                       suggested: _suggested,
-                                      quickSettings: kQuickSettings,
+                                      quickSettings: quickSettingsFor(flags),
                                       brightness: _c.brightness,
                                       volume: _c.volume,
                                       cameraEnabled: true,
@@ -467,6 +474,12 @@ class _NestShellState extends State<NestShell> {
           ],
         );
       case ShellPage.digest:
+        // Without the digest feature, the digest page is the photo frame: there
+        // is nothing else for page 2 to show, and an empty row of cards is worse
+        // than no row.
+        if (!flags.isOn('digestPage')) {
+          return const SizedBox.shrink();
+        }
         return _DigestPage(
           metrics: _m,
           type: type,
@@ -919,80 +932,98 @@ class _DigestPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = metrics;
+    final f = FeatureFlags.current;
+
+    // The cards this page shows, in order, filtered by the build's feature
+    // configuration.
+    //
+    // Collected into a list first rather than interleaving `if (...) ...[ ]`
+    // and gap widgets at each call site: a disabled card then removes its own
+    // separator with it. Hand-writing that is how a collection literal ends up
+    // unbalanced — which is the bug this replaced.
+    final cards = <({int flex, Widget child})>[
+      if (f.isOn('calendar'))
+        (flex: 3, child: _calendarCard(m)),
+      if (f.isOn('weather'))
+        (
+          flex: 2,
+          child: _Card(
+            title: 'Weather',
+            metrics: m,
+            palette: palette,
+            type: type,
+            body: weatherLoading
+                ? 'Checking…'
+                : !weatherEnabled
+                ? 'Set NEST_LAT / LON to enable'
+                : '${weather.condition.label} · ${weather.shortLabel}',
+          ),
+        ),
+      if (f.isOn('music'))
+        (flex: 2, child: _musicCard(m)),
+      if (f.isOn('photoRotation'))
+        (flex: 2, child: _photosCard(m) ?? const SizedBox.shrink()),
+      if (f.isOn('themePicker'))
+        (
+          flex: 2,
+          child: _Card(
+            title: 'Theme',
+            metrics: m,
+            palette: palette,
+            type: type,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  theme.label,
+                  style: type.caption(color: palette.onSurfaceStrong),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  theme == NestTheme.dynamic
+                      ? 'Follows the time of day'
+                      : 'Pinned',
+                  style: type.caption(color: palette.onSurfaceVariant),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final t in NestTheme.values)
+                      _ThemeSwatch(
+                        theme: t,
+                        selected: t == theme,
+                        metrics: m,
+                        type: type,
+                        onTap: () => onThemePick(t),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+    ];
+
     return Padding(
       padding: EdgeInsets.fromLTRB(m.px(48), m.px(44), m.px(48), m.px(60)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(ClockService.greeting(now), style: type.sheetTitle(color: palette.onSurface)),
+          Text(
+            ClockService.greeting(now),
+            style: type.sheetTitle(color: palette.onSurface),
+          ),
           SizedBox(height: m.px(22)),
           Expanded(
             child: Row(
               children: [
-                Expanded(flex: 3, child: _calendarCard(m)),
-                SizedBox(width: m.px(14)),
-                Expanded(
-                  flex: 2,
-                  child: _Card(
-                    title: 'Weather',
-                    metrics: m,
-                    palette: palette,
-                    type: type,
-                    body: weatherLoading
-                        ? 'Checking…'
-                        : !weatherEnabled
-                        ? 'Set NEST_LAT / NEST_LON to enable'
-                        : '${weather.condition.label} · '
-                              '${weather.shortLabel}',
-                  ),
-                ),
-                SizedBox(width: m.px(14)),
-                Expanded(
-                  flex: 2,
-                  child: _musicCard(m),
-                ),
-                SizedBox(width: m.px(14)),
-                Expanded(
-                  flex: 2,
-                  child: _photosCard(m) ?? const SizedBox.shrink(),
-                ),
-                SizedBox(width: m.px(14)),
-                Expanded(
-                  flex: 2,
-                  child: _Card(
-                    title: 'Theme',
-                    metrics: m,
-                    palette: palette,
-                    type: type,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(theme.label, style: type.caption(color: palette.onSurfaceStrong)),
-                        const SizedBox(height: 4),
-                        Text(
-                          theme == NestTheme.dynamic ? 'Follows the time of day' : 'Pinned',
-                          style: type.caption(color: palette.onSurfaceVariant),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final t in NestTheme.values)
-                              _ThemeSwatch(
-                                theme: t,
-                                selected: t == theme,
-                                metrics: m,
-                                type: type,
-                                onTap: () => onThemePick(t),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                for (var i = 0; i < cards.length; i++) ...[
+                  Expanded(flex: cards[i].flex, child: cards[i].child),
+                  if (i < cards.length - 1) SizedBox(width: m.px(14)),
+                ],
               ],
             ),
           ),

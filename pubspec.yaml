@@ -33,6 +33,11 @@ flutter:
     # Licence metadata, read at startup so the photographer's name can be
     # rendered on screen — required by the photo's licence.
     - assets/photo/landscape.json
+    # Feature configuration. assets/features.json is the reduced default build;
+    # assets/features.ef.json is the all-on ExtraFeature build. Both ship so one
+    # checkout can produce either with a single --dart-define.
+    - assets/features.json
+    - assets/features.ef.json
 
   fonts:
     # The real Nest Hub uses Google Sans (SIL OFL since Dec 2025). Shipping

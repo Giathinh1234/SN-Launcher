@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/nest_action.dart' show AssistantBackend;
 import '../state/shell_controller.dart';
+import '../services/feature_flags.dart';
 import '../theme/ambient_palette.dart';
 import '../theme/nest_icons.dart';
 import '../theme/nest_metrics.dart';
@@ -172,6 +173,40 @@ class SettingsPage extends StatelessWidget {
   }
 
   // ── Sections ─────────────────────────────────────────────────────────────
+
+  /// Which build is this?
+  ///
+  /// Two APKs exist and they share an applicationId, so installing one replaces
+  /// the other and the launcher icon looks identical either way. On a device
+  /// being used to compare them, this section is the only way to tell which one
+  /// is actually running — read it rather than inferring it from behaviour.
+  Widget _build(NestMetrics m) {
+    final f = FeatureFlags.current;
+    final on = FeatureFlags.known.where(f.isOn).toList()..sort();
+
+    return _Section(
+      metrics: m,
+      type: type,
+      palette: palette,
+      icon: NestIcons.Settings,
+      title: 'Build',
+      children: [
+        Text(f.buildName, style: type.caption(color: palette.onSurfaceStrong)),
+        SizedBox(height: m.px(6)),
+        Text(
+          on.isEmpty
+              ? 'Launcher only'
+              : '${on.length} of ${FeatureFlags.known.length} features on',
+          style: type.caption(color: palette.onSurfaceVariant),
+        ),
+        SizedBox(height: m.px(4)),
+        Text(
+          on.join(', '),
+          style: type.caption(color: palette.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
 
   Widget _appearance(NestMetrics m) {
     final c = controller;
@@ -471,6 +506,8 @@ class SettingsPage extends StatelessWidget {
                         _display(m),
                         SizedBox(height: m.px(14)),
                         _assistant(m),
+                        SizedBox(height: m.px(14)),
+                        _build(m),
                         // Handle-side clearance at the bottom of the scroll.
                         SizedBox(height: m.px(28)),
                       ],

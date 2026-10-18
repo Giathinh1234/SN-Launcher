@@ -1,0 +1,17 @@
+{
+  "_comment": "ExtraFeature build. Everything on. Build with: flutter build apk --release --dart-define=SN_FEATURES=assets/features.ef.json --dart-define=SN_BUILD_NAME=ef",
+
+  "build": "sn-launcher-ef",
+  "build_name": "ef",
+  "features": {
+    "settings": true,
+    "assistant": true,
+    "music": true,
+    "photoRotation": true,
+    "themePicker": true,
+    "calendar": true,
+    "digestPage": true,
+    "weather": true,
+    "quickSettings": true
+  }
+}

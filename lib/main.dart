@@ -7,6 +7,7 @@ import 'src/models/nest_action.dart';
 import 'src/models/photo_credit.dart';
 import 'src/services/assistant_service.dart';
 import 'src/services/calendar_service.dart';
+import 'src/services/feature_flags.dart';
 import 'src/services/photo_frame_service.dart';
 import 'src/services/settings_store.dart';
 import 'src/services/frame_stats.dart';
@@ -47,6 +48,11 @@ Future<void> main() async {
   // costs well under a millisecond and makes the first frame final.
   await PhotoCredit.preload();
 
+  // Feature configuration. Must resolve before runApp, because the shell reads
+  // it synchronously from build() — there is no flag flicker between a
+  // feature being on for one frame and off for the next.
+  await FeatureFlags.load();
+
   runApp(const NestLauncherApp());
 
   // Go chrome-less *after* the first frame. Setting the system UI mode before
@@ -85,10 +91,14 @@ class _NestLauncherAppState extends State<NestLauncherApp>
     // before painting has already lost the race it exists to win.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_controller?.restore());
-      unawaited(_calendar.start());
+      if (FeatureFlags.current.isOn('calendar')) {
+        unawaited(_calendar.start());
+      }
       // Never on the critical path: the bundled photograph is already on
       // screen, and this only upgrades it later.
-      unawaited(_photos.start());
+      if (FeatureFlags.current.isOn('photoRotation')) {
+        unawaited(_photos.start());
+      }
       unawaited(_restoreAssistant());
     });
   }

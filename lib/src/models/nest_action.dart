@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/feature_flags.dart';
 import '../theme/ambient_palette.dart';
 
 /// One entry in the Nest "Actions on Google" launcher.
@@ -163,6 +164,26 @@ const List<QuickSetting> kQuickSettings = [
   QuickSetting(QuickSettingKind.feedback),
   QuickSetting(QuickSettingKind.settings),
 ];
+
+/// The quick-settings row for this build.
+///
+/// Filtering lives here rather than at the call site so exactly one place
+/// decides which buttons exist. Two reasons it cannot be done by hiding one
+/// widget: a row of seven with one invisible still reserves the slot, and
+/// [tool/verify.py] asserts the badge pitch against a rectified photograph of a
+/// real Nest Hub Max — a row that silently became six would break a real
+/// measurement, so a changed row has to be a deliberate, visible change.
+///
+/// Two gates, because they answer different questions. `quickSettings` asks
+/// whether the row exists at all. `settings` asks whether one entry in it does:
+/// a button that opens a page this build does not have is worse than no button.
+List<QuickSetting> quickSettingsFor(FeatureFlags f) {
+  if (!f.isOn('quickSettings')) return const [];
+  return [
+    for (final q in kQuickSettings)
+      if (q.kind != QuickSettingKind.settings || f.isOn('settings')) q,
+  ];
+}
 
 /// Quick re-colour of an [AmbientPalette] used by the bottom sheet so it always
 /// stays legible over the current ambient background.

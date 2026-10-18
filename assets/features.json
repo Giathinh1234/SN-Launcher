@@ -1,0 +1,17 @@
+{
+  "_comment": "Reduced build. This is the default. Every extra is off so the launcher is one job: open things. Swap values here and rebuild, or push the file to a device. Settings stays on because a launcher you cannot configure is a launcher you cannot keep using.",
+
+  "build": "sn-launcher",
+  "features": {
+    "settings": true,
+
+    "assistant": false,
+    "music": false,
+    "photoRotation": false,
+    "themePicker": false,
+    "calendar": false,
+    "digestPage": false,
+    "weather": false,
+    "quickSettings": true
+  }
+}

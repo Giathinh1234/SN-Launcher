@@ -11,6 +11,25 @@ It is cheaper to lose this turn than to ship something you will find broken in
 three weeks. An agent that agrees with everything is worse than no agent, because
 it hides the disagreement you needed to have.
 
+## Play the chime before every question
+
+```bash
+./tool/chime.sh
+```
+
+**Run this in the same tool call as, or immediately before, any `question`
+tool call — never skip it.**
+
+Promised this once and broke it: the chime was written as a script and then
+only run by hand twice in a whole session, while saying it would play whenever
+I asked something. The user checked every ten minutes to see if it fired. It
+did not.
+
+A notification mechanism that is only sometimes used is not a notification
+mechanism. If you think a question is coming, chime *first*, then ask.
+
+---
+
 ## Before building: pros and cons, out loud
 
 For anything beyond a bug fix, give me the trade before you start. Not a survey
