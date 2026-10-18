@@ -485,6 +485,21 @@ If rendering is broken on an unfamiliar chipset — hangs, garbage, black —
 
 ## Build
 
+**There are two builds**, and they are the same source — see
+[`docs/BUILDS.md`](docs/BUILDS.md). What is in each is decided by a JSON file,
+not by code:
+
+```bash
+./tool/build_variants.sh ef        # everything on — for testing what happens
+./tool/build_variants.sh reduced   # launcher only — this is the one that ships
+./tool/build_variants.sh both
+```
+
+Both keep settings. They share an `applicationId`, so installing one replaces
+the other; open **Settings → Build** to see which is running.
+
+Everything else:
+
 ```bash
 ./tool/build_all.sh          # every platform this host can produce
 ```

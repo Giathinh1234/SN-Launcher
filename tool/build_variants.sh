@@ -44,8 +44,14 @@ build_one() {
   local out="build/app/outputs/flutter-apk"
   for f in "$out"/app-*-release.apk; do
     [ -e "$f" ] || continue
-    cp "$f" "$out/sn-launcher$suffix-${f#app-}"
-    printf '  %-52s %6.1f MB\n' "$(basename "$out/sn-launcher$suffix-${f#app-}")" \
+    # basename first: ${f#app-} silently does nothing on a relative path, which
+    # is how this produced "sn-launcher.ef-build/app/outputs/..." on the first
+    # run. The build had succeeded and reported success; only the copy failed.
+    local base dest
+    base="$(basename "$f")"
+    dest="$out/sn-launcher$suffix-${base#app-}"
+    cp "$f" "$dest"
+    printf '  %-52s %6.1f MB\n' "$(basename "$dest")" \
       "$(echo "scale=1; $(stat -f%z "$f") / 1048576" | bc)"
   done
 }
